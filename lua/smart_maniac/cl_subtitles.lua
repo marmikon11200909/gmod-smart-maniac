@@ -1,7 +1,8 @@
 --[[
-    Smart Maniac NPC - Subtitle System (Client)
+    Smart Maniac NPC - Subtitle System (Client) - IMPROVED
     Displays conversation subtitles at the bottom of the screen.
-    Shows player speech, maniac responses, and listening indicators.
+    Shows player speech, maniac responses, listening indicators.
+    Handles SmartManiac_Phrase net message and triggers TTS.
 ]]
 
 SmartManiac = SmartManiac or {}
@@ -10,34 +11,29 @@ SmartManiac.Subtitles = SmartManiac.Subtitles or {}
 local subtitleQueue = {}
 local liveText = ""
 local isListening = false
-local SUBTITLE_MAX = 5
+local SUBTITLE_MAX = 6
 local SUBTITLE_FONT = "SmartManiac_SubtitleFont"
 local SUBTITLE_FONT_SMALL = "SmartManiac_SubtitleSmall"
 
--- Create fonts
 surface.CreateFont(SUBTITLE_FONT, {
-    font = "Roboto",
-    size = 22,
-    weight = 600,
+    font = "Arial",
+    size = 24,
+    weight = 700,
     antialias = true,
     shadow = true,
 })
 
 surface.CreateFont(SUBTITLE_FONT_SMALL, {
-    font = "Roboto",
-    size = 16,
+    font = "Arial",
+    size = 18,
     weight = 500,
     antialias = true,
     shadow = true,
 })
 
 --- Add a subtitle to the display queue.
--- @param speaker string  Name of who is speaking
--- @param text string  The subtitle text
--- @param color Color  Color for the speaker name
--- @param duration number  How long to display (seconds)
 function SmartManiac.Subtitles.Add(speaker, text, color, duration)
-    duration = duration or 4
+    duration = duration or 5
     color = color or Color(255, 255, 255)
 
     table.insert(subtitleQueue, {
@@ -47,7 +43,6 @@ function SmartManiac.Subtitles.Add(speaker, text, color, duration)
         startTime = CurTime(),
         duration = duration,
         alpha = 0,
-        fadeIn = true,
     })
 
     while #subtitleQueue > SUBTITLE_MAX do
@@ -55,7 +50,7 @@ function SmartManiac.Subtitles.Add(speaker, text, color, duration)
     end
 end
 
---- Set live (interim) subtitle text while player is speaking.
+--- Set live (interim) subtitle text.
 function SmartManiac.Subtitles.SetLive(text)
     liveText = text or ""
 end
@@ -76,11 +71,11 @@ local function DrawSubtitleBox(text, x, y, textColor, bgAlpha, font)
     surface.SetFont(font)
     local tw, th = surface.GetTextSize(text)
 
-    local padding = 8
+    local padding = 10
     local boxW = tw + padding * 2
     local boxH = th + padding
 
-    draw.RoundedBox(4, x - boxW / 2, y - padding / 2, boxW, boxH, Color(0, 0, 0, bgAlpha * 0.7))
+    draw.RoundedBox(6, x - boxW / 2, y - padding / 2, boxW, boxH, Color(0, 0, 0, bgAlpha * 0.75))
     draw.SimpleText(text, font, x, y, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
 
     return boxH + 4
@@ -89,7 +84,7 @@ end
 -- HUD rendering
 hook.Add("HUDPaint", "SmartManiac_Subtitles", function()
     local scrW, scrH = ScrW(), ScrH()
-    local baseY = scrH - 60
+    local baseY = scrH - 70
     local centerX = scrW / 2
 
     -- Clean up expired subtitles
@@ -104,14 +99,15 @@ hook.Add("HUDPaint", "SmartManiac_Subtitles", function()
     if isListening then
         local dots = string.rep(".", math.floor(CurTime() * 2) % 4)
         local listenAlpha = 150 + math.sin(CurTime() * 3) * 50
+        local micIcon = "[MIC]"
         DrawSubtitleBox(
-            "[MIC] Слушаю" .. dots,
+            micIcon .. " \xd0\xa1\xd0\xbb\xd1\x83\xd1\x88\xd0\xb0\xd1\x8e" .. dots,
             centerX, baseY,
             Color(100, 255, 100, listenAlpha),
-            120,
+            140,
             SUBTITLE_FONT_SMALL
         )
-        baseY = baseY - 28
+        baseY = baseY - 30
     end
 
     -- Draw live (interim) text
@@ -126,10 +122,10 @@ hook.Add("HUDPaint", "SmartManiac_Subtitles", function()
             displayText,
             centerX, baseY,
             Color(180, 200, 255, liveAlpha),
-            100,
+            110,
             SUBTITLE_FONT_SMALL
         )
-        baseY = baseY - 28
+        baseY = baseY - 30
     end
 
     -- Draw queued subtitles (newest at bottom)
@@ -138,7 +134,6 @@ hook.Add("HUDPaint", "SmartManiac_Subtitles", function()
         local elapsed = CurTime() - sub.startTime
         local remaining = sub.duration - elapsed
 
-        -- Fade in/out
         local alpha = 255
         if elapsed < 0.3 then
             alpha = math.floor((elapsed / 0.3) * 255)
@@ -149,7 +144,6 @@ hook.Add("HUDPaint", "SmartManiac_Subtitles", function()
 
         if alpha <= 0 then continue end
 
-        -- Build display text
         local displayText = sub.text
         if #displayText > 120 then
             displayText = string.sub(displayText, 1, 117) .. "..."
@@ -158,22 +152,20 @@ hook.Add("HUDPaint", "SmartManiac_Subtitles", function()
         local speakerColor = Color(sub.color.r, sub.color.g, sub.color.b, alpha)
         local textColor = Color(255, 255, 255, alpha)
 
-        -- Draw speaker name + text
         surface.SetFont(SUBTITLE_FONT)
         local speakerW = surface.GetTextSize(sub.speaker .. ": ")
         local textW = surface.GetTextSize(displayText)
         local totalW = speakerW + textW
-        local padding = 10
+        local padding = 12
         local boxW = totalW + padding * 2
 
-        surface.SetFont(SUBTITLE_FONT)
         local _, textH = surface.GetTextSize(displayText)
         local boxH = textH + padding
 
         local boxX = centerX - boxW / 2
         local boxY = baseY - padding / 2
 
-        draw.RoundedBox(4, boxX, boxY, boxW, boxH, Color(0, 0, 0, alpha * 0.7))
+        draw.RoundedBox(6, boxX, boxY, boxW, boxH, Color(0, 0, 0, alpha * 0.75))
 
         local textStartX = centerX - totalW / 2
         draw.SimpleText(sub.speaker .. ": ", SUBTITLE_FONT, textStartX, baseY, speakerColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
@@ -183,19 +175,22 @@ hook.Add("HUDPaint", "SmartManiac_Subtitles", function()
     end
 end)
 
--- Receive maniac phrase for subtitle display
+-- Receive maniac phrase for subtitle display AND trigger TTS
 net.Receive("SmartManiac_Phrase", function()
     local npc = net.ReadEntity()
     local phrase = net.ReadString()
 
-    if phrase and phrase ~= "" then
-        SmartManiac.Subtitles.Add("Маньяк", phrase, Color(255, 60, 60), 5)
-    end
+    if not phrase or phrase == "" then return end
 
-    -- Also trigger TTS
+    -- Show subtitle
+    SmartManiac.Subtitles.Add("\xd0\x9c\xd0\xb0\xd0\xbd\xd1\x8c\xd1\x8f\xd0\xba", phrase, Color(255, 60, 60), 6)
+
+    -- Trigger TTS voice playback
     if SmartManiac.TTS and SmartManiac.TTS.Speak and IsValid(npc) then
         SmartManiac.TTS.Speak(npc, phrase)
     end
+
+    print("[Smart Maniac] Received phrase: " .. string.sub(phrase, 1, 80))
 end)
 
 print("[Smart Maniac] Subtitle system loaded.")
