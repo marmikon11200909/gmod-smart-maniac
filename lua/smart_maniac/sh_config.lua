@@ -57,7 +57,7 @@ function SmartManiac.Config.GetAPIUrl()
     return SmartManiac.Config.ProviderURLs[provider] or SmartManiac.Config.ProviderURLs["openai"]
 end
 SmartManiac.Config.PhraseInterval  = 5      -- Min seconds between AI-generated phrases
-SmartManiac.Config.MaxPhraseLength = 100    -- Max characters for generated phrases
+SmartManiac.Config.MaxPhraseLength = 200    -- Max characters for generated phrases
 
 -- ============================================================
 -- Voice / Sound
@@ -65,6 +65,15 @@ SmartManiac.Config.MaxPhraseLength = 100    -- Max characters for generated phra
 SmartManiac.Config.VoiceEnabled     = true
 SmartManiac.Config.VoiceVolume      = 1.0
 SmartManiac.Config.VoiceRange       = 1500   -- How far maniac voice can be heard
+
+-- ============================================================
+-- Voice AI (Speech Recognition & Conversation)
+-- ============================================================
+SmartManiac.Config.VoiceAIEnabled       = true   -- Enable voice AI (STT + AI response + TTS)
+SmartManiac.Config.VoiceAIRange         = 1500   -- Range for voice AI conversation
+SmartManiac.Config.VoiceAICooldown      = 2      -- Min seconds between voice AI responses
+SmartManiac.Config.VoiceTTSRate         = 0.72   -- TTS playback rate (lower = deeper voice)
+SmartManiac.Config.VoiceTTSVolume       = 1.0    -- TTS volume
 
 -- ============================================================
 -- Server ConVars (created server-side only)
@@ -82,6 +91,8 @@ if SERVER then
     CreateConVar("sm_maniac_openai_key",     "",  FCVAR_PROTECTED, "OpenAI API key")
     CreateConVar("sm_maniac_openai_model",   SmartManiac.Config.OpenAIModel, FCVAR_ARCHIVE, "OpenAI model to use")
     CreateConVar("sm_maniac_openai_provider", "openai", FCVAR_ARCHIVE, "API provider: openai or openrouter")
+    CreateConVar("sm_maniac_voice_ai",       "1", FCVAR_ARCHIVE, "Enable voice AI conversation (STT + response)")
+    CreateConVar("sm_maniac_voice_tts_rate", "0.72", FCVAR_ARCHIVE, "TTS playback rate (lower = deeper voice, 0.5-1.0)")
 end
 
 --- Refresh config values from ConVars (server-side).
@@ -95,4 +106,5 @@ function SmartManiac.Config.Refresh()
     SmartManiac.Config.Health            = GetConVar("sm_maniac_health"):GetInt()
     SmartManiac.Config.AttackDamage      = GetConVar("sm_maniac_damage"):GetInt()
     SmartManiac.Config.OpenAIEnabled     = GetConVar("sm_maniac_openai_enabled"):GetBool()
+    SmartManiac.Config.VoiceAIEnabled    = GetConVar("sm_maniac_voice_ai"):GetBool()
 end
