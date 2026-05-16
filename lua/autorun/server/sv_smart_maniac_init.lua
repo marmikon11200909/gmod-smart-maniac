@@ -11,6 +11,7 @@ AddCSLuaFile("smart_maniac/sh_config.lua")
 AddCSLuaFile("smart_maniac/cl_hud.lua")
 AddCSLuaFile("smart_maniac/cl_voice_detection.lua")
 AddCSLuaFile("smart_maniac/cl_tts.lua")
+AddCSLuaFile("smart_maniac/cl_voice_capture.lua")
 
 -- Load server modules
 include("smart_maniac/sv_ai_brain.lua")
@@ -18,12 +19,14 @@ include("smart_maniac/sv_voice_detection.lua")
 include("smart_maniac/sv_openai.lua")
 include("smart_maniac/sv_sound_system.lua")
 include("smart_maniac/sv_conversation.lua")
+include("smart_maniac/sv_voice_conversation.lua")
 
 -- Register network strings
 util.AddNetworkString("SmartManiac_Phrase")
 util.AddNetworkString("SmartManiac_VoiceDetected")
 util.AddNetworkString("SmartManiac_VoiceStatus")
 util.AddNetworkString("SmartManiac_StateChanged")
+util.AddNetworkString("SmartManiac_VoiceTranscript")
 
 -- ============================================================
 -- Admin commands

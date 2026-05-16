@@ -54,8 +54,10 @@ timer.Create("SmartManiac_VoiceCheck", 0.5, 0, function()
                     -- The maniac "heard" this player's voice
                     SmartManiac.AI.OnVoiceHeard(maniac, ply:GetPos())
 
-                    -- React with a phrase (cooldown handled inside SayPhrase)
-                    if isfunction(maniac.SayPhrase) then
+                    -- Generate contextual AI voice response
+                    if SmartManiac.VoiceConv and SmartManiac.VoiceConv.HandleContextualVoice then
+                        SmartManiac.VoiceConv.HandleContextualVoice(maniac, ply)
+                    elseif isfunction(maniac.SayPhrase) then
                         maniac:SayPhrase("investigate")
                     end
 

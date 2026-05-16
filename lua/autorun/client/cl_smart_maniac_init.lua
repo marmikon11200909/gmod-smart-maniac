@@ -15,6 +15,9 @@ include("smart_maniac/cl_voice_detection.lua")
 -- Load client TTS (text-to-speech voice output)
 include("smart_maniac/cl_tts.lua")
 
+-- Load client voice capture (speech recognition via DHTML)
+include("smart_maniac/cl_voice_capture.lua")
+
 -- ============================================================
 -- Spawn menu registration
 -- ============================================================
@@ -49,21 +52,32 @@ hook.Add("PopulateToolMenu", "SmartManiac_ToolMenu", function()
         panel:NumSlider("Attack Damage", "sm_maniac_damage", 5, 200, 0)
 
         panel:Help("")
-        panel:Help("=== OpenAI Integration ===")
-        panel:Help("Enable AI-generated phrases and smart decisions.")
-        panel:CheckBox("Enable OpenAI", "sm_maniac_openai_enabled")
+        panel:Help("=== AI Integration ===")
+        panel:Help("Enable AI-generated phrases and voice conversation.")
+        panel:CheckBox("Enable AI (OpenAI/OpenRouter)", "sm_maniac_openai_enabled")
         panel:TextEntry("API Key", "sm_maniac_openai_key")
         panel:TextEntry("Model", "sm_maniac_openai_model")
+        panel:TextEntry("Provider (openai/openrouter)", "sm_maniac_openai_provider")
+
+        panel:Help("")
+        panel:Help("=== Voice AI ===")
+        panel:Help("Voice chat recognition and AI conversation.")
+        panel:Help("Speak through voice chat near the maniac!")
+        panel:CheckBox("Enable Voice AI", "sm_maniac_voice_ai")
+        panel:NumSlider("Voice Depth (lower=deeper)", "sm_maniac_voice_tts_rate", 0.5, 1.0, 2)
 
         panel:Help("")
         panel:Help("=== Console Commands ===")
         panel:Help("sm_maniac_spawn - Spawn a maniac")
         panel:Help("sm_maniac_remove_all - Remove all maniacs")
         panel:Help("sm_maniac_reload_config - Reload config")
+        panel:Help("sm_maniac_test_openai - Test AI connection")
+        panel:Help("sm_maniac_voice_status - Check voice AI status")
 
         panel:Button("Spawn Maniac", "sm_maniac_spawn")
         panel:Button("Remove All Maniacs", "sm_maniac_remove_all")
         panel:Button("Reload Config", "sm_maniac_reload_config")
+        panel:Button("Test AI Connection", "sm_maniac_test_openai")
     end)
 end)
 
@@ -132,6 +146,34 @@ hook.Add("Think", "SmartManiac_ProximityWarning", function()
             nextWarning = CurTime() + 3
             break
         end
+    end
+end)
+
+-- ============================================================
+-- Voice AI status command
+-- ============================================================
+
+concommand.Add("sm_maniac_voice_status", function()
+    local method = "unavailable"
+    local recording = false
+
+    if SmartManiac.VoiceCapture then
+        method = SmartManiac.VoiceCapture.GetMethod and SmartManiac.VoiceCapture.GetMethod() or "unknown"
+        recording = SmartManiac.VoiceCapture.IsRecording and SmartManiac.VoiceCapture.IsRecording() or false
+    end
+
+    print("[Smart Maniac] === Voice AI Status ===")
+    print("[Smart Maniac] Capture method: " .. method)
+    print("[Smart Maniac] Currently recording: " .. tostring(recording))
+    print("[Smart Maniac] DHTML panel ready: " .. tostring(SmartManiac.VoiceCapture ~= nil and SmartManiac.VoiceCapture.IsAvailable ~= nil))
+
+    if method == "webspeech" then
+        print("[Smart Maniac] Using Web Speech API - real-time speech recognition active!")
+    elseif method == "whisper" then
+        print("[Smart Maniac] Using MediaRecorder + Whisper API for speech recognition")
+    else
+        print("[Smart Maniac] Speech recognition unavailable - using contextual AI responses")
+        print("[Smart Maniac] The maniac will still react to your voice with AI-generated phrases!")
     end
 end)
 
