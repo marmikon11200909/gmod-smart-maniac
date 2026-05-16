@@ -157,27 +157,40 @@ end)
 -- ============================================================
 
 concommand.Add("sm_maniac_voice_status", function()
-    local method = "unavailable"
-    local recording = false
-
-    if SmartManiac.VoiceCapture then
-        method = SmartManiac.VoiceCapture.GetMethod and SmartManiac.VoiceCapture.GetMethod() or "unknown"
-        recording = SmartManiac.VoiceCapture.IsRecording and SmartManiac.VoiceCapture.IsRecording() or false
-    end
-
     print("[Smart Maniac] === Voice AI Status ===")
-    print("[Smart Maniac] Capture method: " .. method)
-    print("[Smart Maniac] Currently recording: " .. tostring(recording))
-    print("[Smart Maniac] DHTML panel ready: " .. tostring(SmartManiac.VoiceCapture ~= nil and SmartManiac.VoiceCapture.IsAvailable ~= nil))
 
-    if method == "webspeech" then
-        print("[Smart Maniac] Using Web Speech API - real-time speech recognition active!")
-    elseif method == "whisper" then
-        print("[Smart Maniac] Using MediaRecorder + Whisper API for speech recognition")
+    -- Voice capture info
+    if SmartManiac.VoiceCapture then
+        local info = SmartManiac.VoiceCapture.GetDebugInfo and SmartManiac.VoiceCapture.GetDebugInfo() or {}
+        print("[Smart Maniac] Capture method: " .. tostring(info.method or "unknown"))
+        print("[Smart Maniac] Currently recording: " .. tostring(info.recording or false))
+        print("[Smart Maniac] Recognition ready: " .. tostring(info.ready or false))
+        print("[Smart Maniac] DHTML panel valid: " .. tostring(info.panelValid or false))
+        print("[Smart Maniac] Voice key held: " .. tostring(info.voiceKeyHeld or false))
+        print("[Smart Maniac] Init attempts: " .. tostring(info.initAttempts or 0))
+        if info.lastTranscript and info.lastTranscript ~= "" then
+            print("[Smart Maniac] Last transcript: " .. info.lastTranscript)
+        end
     else
-        print("[Smart Maniac] Speech recognition unavailable - using contextual AI responses")
-        print("[Smart Maniac] The maniac will still react to your voice with AI-generated phrases!")
+        print("[Smart Maniac] Voice capture module not loaded!")
     end
+
+    -- TTS info
+    if SmartManiac.TTS then
+        local ttsInfo = SmartManiac.TTS.GetDebugInfo and SmartManiac.TTS.GetDebugInfo() or {}
+        print("[Smart Maniac] TTS method: " .. tostring(SmartManiac.TTS.GetMethod and SmartManiac.TTS.GetMethod() or "unknown"))
+        print("[Smart Maniac] TTS panel valid: " .. tostring(ttsInfo.panelValid or false))
+        print("[Smart Maniac] TTS ready: " .. tostring(ttsInfo.ttsReady or false))
+        print("[Smart Maniac] Active TTS channels: " .. tostring(ttsInfo.activeChannels or 0))
+    else
+        print("[Smart Maniac] TTS module not loaded!")
+    end
+
+    print("[Smart Maniac] === Instructions ===")
+    print("[Smart Maniac] 1. In console: sm_maniac_setup YOUR_OPENROUTER_KEY")
+    print("[Smart Maniac] 2. sm_maniac_spawn")
+    print("[Smart Maniac] 3. Walk up to maniac and press V to talk")
+    print("[Smart Maniac] 4. Maniac will also talk on his own near you!")
 end)
 
 print("[Smart Maniac] Client module loaded successfully!")

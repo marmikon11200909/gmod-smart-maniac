@@ -211,4 +211,114 @@ hook.Add("PlayerDeath", "SmartManiac_KillAnnounce", function(victim, inflictor, 
     end
 end)
 
+-- ============================================================
+-- Quick setup command (one command to enable everything)
+-- ============================================================
+
+concommand.Add("sm_maniac_setup", function(ply, cmd, args)
+    if IsValid(ply) and not ply:IsAdmin() then
+        ply:ChatPrint("[Smart Maniac] You need admin privileges.")
+        return
+    end
+
+    local function msg(text)
+        print(text)
+        if IsValid(ply) then ply:ChatPrint(text) end
+    end
+
+    if not args or #args < 1 then
+        msg("[Smart Maniac] Usage: sm_maniac_setup YOUR_OPENROUTER_API_KEY")
+        msg("[Smart Maniac] This will enable AI, set OpenRouter, and set your key.")
+        return
+    end
+
+    local key = args[1]
+    RunConsoleCommand("sm_maniac_openai_enabled", "1")
+    RunConsoleCommand("sm_maniac_openai_provider", "openrouter")
+    RunConsoleCommand("sm_maniac_openai_key", key)
+    RunConsoleCommand("sm_maniac_voice_ai", "1")
+
+    msg("[Smart Maniac] === Quick Setup Complete ===")
+    msg("[Smart Maniac] AI: ON | Provider: OpenRouter | Voice AI: ON")
+    msg("[Smart Maniac] Key set (" .. #key .. " chars)")
+    msg("[Smart Maniac] Now run: sm_maniac_spawn")
+    msg("[Smart Maniac] Then press V near the maniac to talk!")
+end)
+
+-- ============================================================
+-- Force maniac to speak (debug command)
+-- ============================================================
+
+concommand.Add("sm_maniac_say", function(ply, cmd, args)
+    if IsValid(ply) and not ply:IsAdmin() then
+        ply:ChatPrint("[Smart Maniac] You need admin privileges.")
+        return
+    end
+
+    local function msg(text)
+        print(text)
+        if IsValid(ply) then ply:ChatPrint(text) end
+    end
+
+    local maniacs = ents.FindByClass("npc_smart_maniac")
+    if #maniacs == 0 then
+        msg("[Smart Maniac] No maniacs found! Run: sm_maniac_spawn")
+        return
+    end
+
+    local npc = maniacs[1]
+
+    if args and #args > 0 then
+        local phrase = table.concat(args, " ")
+        SmartManiac.Sound.BroadcastPhrase(npc, phrase)
+        msg("[Smart Maniac] Maniac says: " .. phrase)
+    else
+        if SmartManiac.VoiceConv and SmartManiac.VoiceConv.ProactiveSpeech then
+            SmartManiac.VoiceConv.ProactiveSpeech(npc)
+            msg("[Smart Maniac] Triggered proactive speech for maniac #" .. npc:EntIndex())
+        else
+            msg("[Smart Maniac] Voice conversation module not loaded!")
+        end
+    end
+end)
+
+-- ============================================================
+-- Full voice system diagnostics
+-- ============================================================
+
+concommand.Add("sm_maniac_voice_debug", function(ply)
+    if IsValid(ply) and not ply:IsAdmin() then
+        ply:ChatPrint("[Smart Maniac] You need admin privileges.")
+        return
+    end
+
+    local function msg(text)
+        print(text)
+        if IsValid(ply) then ply:ChatPrint(text) end
+    end
+
+    msg("[Smart Maniac] === Voice System Debug ===")
+    msg("[Smart Maniac] Voice AI enabled: " .. tostring(GetConVar("sm_maniac_voice_ai"):GetBool()))
+    msg("[Smart Maniac] OpenAI enabled: " .. tostring(GetConVar("sm_maniac_openai_enabled"):GetBool()))
+    msg("[Smart Maniac] API key set: " .. tostring(GetConVar("sm_maniac_openai_key"):GetString() ~= ""))
+    msg("[Smart Maniac] Provider: " .. GetConVar("sm_maniac_openai_provider"):GetString())
+    msg("[Smart Maniac] API URL: " .. SmartManiac.Config.GetAPIUrl())
+    msg("[Smart Maniac] VoiceConv module: " .. tostring(SmartManiac.VoiceConv ~= nil))
+
+    local maniacs = ents.FindByClass("npc_smart_maniac")
+    msg("[Smart Maniac] Maniacs alive: " .. #maniacs)
+
+    local speakers = SmartManiac.Voice and SmartManiac.Voice.SpeakingPlayers or {}
+    local speakerCount = 0
+    for _ in pairs(speakers) do speakerCount = speakerCount + 1 end
+    msg("[Smart Maniac] Players speaking: " .. speakerCount)
+
+    msg("[Smart Maniac] === Commands ===")
+    msg("sm_maniac_setup KEY - Quick setup with OpenRouter")
+    msg("sm_maniac_spawn - Spawn maniac")
+    msg("sm_maniac_say TEXT - Make maniac say text")
+    msg("sm_maniac_say - Trigger random proactive phrase")
+    msg("sm_maniac_test_openai - Test AI connection")
+end)
+
 print("[Smart Maniac] Server module loaded successfully!")

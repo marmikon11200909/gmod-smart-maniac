@@ -7,13 +7,18 @@ AI-powered maniac NPC for Garry's Mod with **live voice AI conversation**, intel
 - **Live Voice AI** — speak through Garry's Mod voice chat and the maniac responds with AI-generated phrases in a deep male voice
 - **Speech Recognition** — captures your voice via Web Speech API (DHTML) and transcribes what you say
 - **AI Conversation** — generates contextual responses based on what you said, the maniac's state, and game situation
-- **Deep Male Voice TTS** — maniac speaks back with a rough, menacing voice (pitch-shifted Google TTS)
+- **Deep Male Voice TTS** — maniac speaks back with a rough, menacing voice (Google TTS primary + SpeechSynthesis bonus)
+- **Proactive Speaking** — maniac talks on his own when near players (random AI phrases, taunts, mumbling)
+- **Voice Imitation** — maniac can mock and repeat your words sarcastically (30% chance per response)
+- **Subtitles** — on-screen subtitles showing your speech (blue) and maniac's responses (red) with animations
+- **Echo Effect** — 3D positional audio with echo for menacing atmosphere
 - **Intelligent AI** — finite state machine with states: Idle, Patrol, Investigate, Chase, Attack, Lost Target
 - **Voice Detection** — reacts to players using voice chat nearby and investigates the sound source
 - **Player Detection** — sees players (FOV + line-of-sight), hears running/shooting/jumping
 - **OpenRouter Support** — works with OpenRouter API (for regions where OpenAI is blocked)
 - **Visual Effects** — glowing red eyes, floating phrase bubbles, screen effects when being chased, directional threat indicator, atmospheric overlays
 - **Text Chat** — also responds to text chat messages near the maniac
+- **Quick Setup** — one command to configure everything: `sm_maniac_setup YOUR_KEY`
 - **Customizable** — all parameters adjustable via ConVars and in-game settings panel
 - **Spawn Menu** — available in the NPC spawn menu under "Smart Maniac" category
 
@@ -28,17 +33,27 @@ AI-powered maniac NPC for Garry's Mod with **live voice AI conversation**, intel
 
 ## Quick Start — Voice AI
 
+### One-Command Setup (Recommended)
+```
+sm_maniac_setup YOUR_OPENROUTER_API_KEY
+sm_maniac_spawn
+```
+Done! Walk up to the maniac and press V to talk.
+
+### Manual Setup
 1. Open console and set up the API:
    ```
    sm_maniac_openai_enabled 1
    sm_maniac_openai_provider openrouter
    sm_maniac_openai_key YOUR_OPENROUTER_API_KEY
    sm_maniac_openai_model gpt-4o-mini
+   sm_maniac_voice_ai 1
    ```
 2. Spawn a maniac: `sm_maniac_spawn`
 3. Walk up to the maniac and **press V** (voice chat key)
 4. **Talk!** The maniac will hear you, understand what you said, and respond with a deep menacing voice
-5. Check voice AI status: `sm_maniac_voice_status`
+5. **Wait!** The maniac will also talk on his own when you're nearby!
+6. Check voice AI status: `sm_maniac_voice_status`
 
 ### How Voice AI Works
 
@@ -65,11 +80,15 @@ You speak (V key) -> Microphone captured -> Speech-to-Text ->
 ### Console Commands
 | Command | Description |
 |---------|-------------|
+| `sm_maniac_setup KEY` | **Quick setup** — enables AI, OpenRouter, voice AI in one command |
 | `sm_maniac_spawn` | Spawn a maniac at your crosshair |
 | `sm_maniac_remove_all` | Remove all maniacs from the map |
 | `sm_maniac_reload_config` | Reload config from ConVars |
 | `sm_maniac_test_openai` | Test AI API connection |
-| `sm_maniac_voice_status` | Check voice AI status |
+| `sm_maniac_voice_status` | Check voice AI status (client) |
+| `sm_maniac_voice_debug` | Full voice system diagnostics (server) |
+| `sm_maniac_say TEXT` | Force maniac to say specific text |
+| `sm_maniac_say` | Trigger random proactive phrase |
 
 ### Settings
 Open the **Utilities** tab in the spawn menu -> **Smart Maniac** -> **Settings**
@@ -132,9 +151,10 @@ IDLE -> PATROL -> (sees player) -> CHASE -> (close enough) -> ATTACK
 lua/smart_maniac/
   cl_voice_capture.lua      -- DHTML speech recognition (client)
   cl_voice_detection.lua    -- Voice chat detection hooks (client)
-  cl_tts.lua                -- Text-to-Speech with deep voice (client)
+  cl_tts.lua                -- Text-to-Speech: Google TTS primary + SpeechSynthesis (client)
+  cl_subtitles.lua          -- Subtitle display system (client)
   cl_hud.lua                -- HUD effects and indicators (client)
-  sv_voice_conversation.lua -- Voice AI conversation handler (server)
+  sv_voice_conversation.lua -- Voice AI: conversation + proactive speech + imitation (server)
   sv_voice_detection.lua    -- Voice detection server logic (server)
   sv_conversation.lua       -- Text chat conversation (server)
   sv_openai.lua             -- OpenAI/OpenRouter API (server)

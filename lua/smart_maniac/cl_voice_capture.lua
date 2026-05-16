@@ -1,14 +1,15 @@
 --[[
-    Smart Maniac NPC - Voice Capture & Speech Recognition (Client)
-    Uses a hidden DHTML panel to capture microphone audio and transcribe
-    player speech via Web Speech API.
-
-    Key behavior:
-    - Starts listening when player presses V (voice chat)
-    - Keeps listening for a grace period AFTER player releases V
-    - Accumulates all speech into a single transcript
-    - Only sends to server after silence period (player finished talking)
-    - Shows listening indicator via subtitle system
+    Smart Maniac NPC - Voice Capture & Speech Recognition (Client) - MAXIMUM FIX
+    
+    Uses DHTML panel with Web Speech API for real-time speech recognition.
+    
+    Key improvements:
+    - Extended listening: keeps recording for grace period after V release
+    - Accumulates all speech into single transcript before sending
+    - Silence detection: only sends after player stops talking
+    - Robust initialization with auto-retry
+    - Better error recovery and status reporting
+    - Shows live transcription via subtitle system
 ]]
 
 SmartManiac = SmartManiac or {}
@@ -20,15 +21,18 @@ local lastTranscript = ""
 local accumulatedTranscript = ""
 local recognitionReady = false
 local captureMethod = "none"
+local initAttempts = 0
+local MAX_INIT_ATTEMPTS = 3
 
 -- Timing configuration
-local GRACE_PERIOD = 3.0
-local SILENCE_TIMEOUT = 2.0
-local SEND_COOLDOWN = 3.0
+local GRACE_PERIOD = 4.0        -- Keep listening 4 sec after V released
+local SILENCE_TIMEOUT = 2.5     -- Send transcript after 2.5 sec silence
+local SEND_COOLDOWN = 2.0       -- Min time between sends
 
 local nextSendTime = 0
 local voiceKeyHeld = false
 local lastSpeechTime = 0
+local captureStartTime = 0
 
 --- Send accumulated transcript to the server.
 local function SendAccumulatedTranscript()
@@ -38,16 +42,21 @@ local function SendAccumulatedTranscript()
 
     nextSendTime = CurTime() + SEND_COOLDOWN
 
+    if #text > 500 then
+        text = string.sub(text, 1, 500)
+    end
+
     net.Start("SmartManiac_VoiceTranscript")
-        net.WriteString(string.sub(text, 1, 500))
+        net.WriteString(text)
     net.SendToServer()
 
     if SmartManiac.Subtitles and SmartManiac.Subtitles.Add then
-        SmartManiac.Subtitles.Add("Вы", text, Color(100, 180, 255), 4)
+        SmartManiac.Subtitles.Add("\xd0\x92\xd1\x8b", text, Color(100, 180, 255), 5)
     end
 
-    print("[Smart Maniac] Sent transcript: " .. text)
+    print("[Smart Maniac] Sent voice transcript: " .. text)
     accumulatedTranscript = ""
+    lastTranscript = text
 end
 
 --- Initialize the DHTML panel for speech recognition.
@@ -55,6 +64,9 @@ function SmartManiac.VoiceCapture.Init()
     if IsValid(dhtmlPanel) then
         dhtmlPanel:Remove()
     end
+
+    initAttempts = initAttempts + 1
+    print("[Smart Maniac] Initializing voice capture (attempt " .. initAttempts .. ")")
 
     dhtmlPanel = vgui.Create("DHTML")
     dhtmlPanel:SetSize(1, 1)
@@ -75,9 +87,14 @@ function SmartManiac.VoiceCapture.Init()
             end
             lastTranscript = text
             print("[Smart Maniac] Speech (final): " .. text)
-        else
+
             if SmartManiac.Subtitles and SmartManiac.Subtitles.SetLive then
-                SmartManiac.Subtitles.SetLive(text)
+                SmartManiac.Subtitles.SetLive(accumulatedTranscript)
+            end
+        else
+            local liveDisplay = accumulatedTranscript ~= "" and (accumulatedTranscript .. " " .. text) or text
+            if SmartManiac.Subtitles and SmartManiac.Subtitles.SetLive then
+                SmartManiac.Subtitles.SetLive(liveDisplay)
             end
         end
 
@@ -100,9 +117,23 @@ function SmartManiac.VoiceCapture.Init()
 
     dhtmlPanel:AddFunction("gmod", "recognitionError", function(err)
         print("[Smart Maniac] Speech recognition error: " .. tostring(err))
+        if err == "not-allowed" or err == "service-not-allowed" then
+            print("[Smart Maniac] Microphone access denied - voice AI will use contextual mode")
+            captureMethod = "denied"
+        end
     end)
 
-    local html = [[
+    dhtmlPanel:AddFunction("gmod", "recognitionEnded", function()
+        if isRecording and IsValid(dhtmlPanel) then
+            timer.Simple(0.2, function()
+                if isRecording and IsValid(dhtmlPanel) then
+                    dhtmlPanel:RunJavascript("startListening();")
+                end
+            end)
+        end
+    end)
+
+    local html = [==[
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
@@ -110,6 +141,8 @@ function SmartManiac.VoiceCapture.Init()
 <script>
 var recognition = null;
 var isListening = false;
+var restartCount = 0;
+var maxRestarts = 50;
 
 function initRecognition() {
     var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -127,7 +160,6 @@ function initRecognition() {
     recognition.onresult = function(event) {
         var interimTranscript = '';
         var finalTranscript = '';
-
         for (var i = event.resultIndex; i < event.results.length; i++) {
             var transcript = event.results[i][0].transcript;
             if (event.results[i].isFinal) {
@@ -136,7 +168,6 @@ function initRecognition() {
                 interimTranscript += transcript;
             }
         }
-
         if (finalTranscript.trim() !== '') {
             gmod.receiveTranscript(finalTranscript.trim(), true);
         }
@@ -146,18 +177,19 @@ function initRecognition() {
     };
 
     recognition.onerror = function(event) {
-        if (event.error !== 'no-speech' && event.error !== 'aborted') {
-            gmod.recognitionError(event.error);
-        }
+        if (event.error === 'no-speech' || event.error === 'aborted') return;
+        gmod.recognitionError(event.error);
     };
 
     recognition.onend = function() {
-        if (isListening) {
-            try {
-                setTimeout(function() {
-                    if (isListening) recognition.start();
-                }, 100);
-            } catch(e) {}
+        gmod.recognitionEnded();
+        if (isListening && restartCount < maxRestarts) {
+            restartCount++;
+            setTimeout(function() {
+                if (isListening && recognition) {
+                    try { recognition.start(); } catch(e) {}
+                }
+            }, 200);
         }
     };
 
@@ -166,34 +198,47 @@ function initRecognition() {
 }
 
 function startListening() {
-    if (!recognition) {
-        if (!initRecognition()) return;
-    }
+    if (!recognition) { if (!initRecognition()) return; }
     if (isListening) return;
-
+    restartCount = 0;
+    isListening = true;
     try {
         recognition.start();
-        isListening = true;
     } catch(e) {
-        gmod.recognitionError(e.message);
+        try {
+            recognition.stop();
+            setTimeout(function() {
+                try { recognition.start(); } catch(e2) {
+                    gmod.recognitionError(e2.message || 'start_failed');
+                }
+            }, 200);
+        } catch(e2) {
+            gmod.recognitionError(e.message || 'start_failed');
+        }
     }
 }
 
 function stopListening() {
     isListening = false;
+    restartCount = maxRestarts;
     if (!recognition) return;
-    try {
-        recognition.stop();
-    } catch(e) {}
+    try { recognition.stop(); } catch(e) {}
 }
 
 initRecognition();
 </script>
 </body>
 </html>
-]]
+]==]
 
     dhtmlPanel:SetHTML(html)
+
+    timer.Simple(5, function()
+        if not recognitionReady and initAttempts < MAX_INIT_ATTEMPTS then
+            print("[Smart Maniac] Speech recognition not ready, retrying...")
+            SmartManiac.VoiceCapture.Init()
+        end
+    end)
 end
 
 --- Start capturing voice / speech recognition.
@@ -204,17 +249,19 @@ function SmartManiac.VoiceCapture.StartCapture()
     if isRecording then return end
     isRecording = true
     accumulatedTranscript = ""
+    captureStartTime = CurTime()
 
     if SmartManiac.Subtitles and SmartManiac.Subtitles.ShowListening then
         SmartManiac.Subtitles.ShowListening(true)
     end
 
-    if IsValid(dhtmlPanel) then
+    if IsValid(dhtmlPanel) and recognitionReady then
         dhtmlPanel:RunJavascript("startListening();")
-    else
+        print("[Smart Maniac] Voice capture started")
+    elseif not IsValid(dhtmlPanel) then
         SmartManiac.VoiceCapture.Init()
-        timer.Simple(0.5, function()
-            if IsValid(dhtmlPanel) then
+        timer.Simple(1, function()
+            if IsValid(dhtmlPanel) and isRecording then
                 dhtmlPanel:RunJavascript("startListening();")
             end
         end)
@@ -252,6 +299,9 @@ function SmartManiac.VoiceCapture.FinalStop()
             SmartManiac.Subtitles.ClearLive()
         end
     end)
+
+    local duration = CurTime() - captureStartTime
+    print("[Smart Maniac] Voice capture stopped (duration: " .. string.format("%.1f", duration) .. "s)")
 end
 
 function SmartManiac.VoiceCapture.GetMethod()
@@ -270,10 +320,27 @@ function SmartManiac.VoiceCapture.IsVoiceKeyHeld()
     return voiceKeyHeld
 end
 
+function SmartManiac.VoiceCapture.GetLastTranscript()
+    return lastTranscript
+end
+
+function SmartManiac.VoiceCapture.GetDebugInfo()
+    return {
+        method = captureMethod,
+        recording = isRecording,
+        ready = recognitionReady,
+        panelValid = IsValid(dhtmlPanel),
+        accumulated = accumulatedTranscript,
+        lastTranscript = lastTranscript,
+        voiceKeyHeld = voiceKeyHeld,
+        initAttempts = initAttempts,
+    }
+end
+
 hook.Add("InitPostEntity", "SmartManiac_VoiceCaptureInit", function()
     timer.Simple(2, function()
         SmartManiac.VoiceCapture.Init()
     end)
 end)
 
-print("[Smart Maniac] Voice capture module loaded (extended listening).")
+print("[Smart Maniac] Voice capture module loaded (extended listening, grace period " .. GRACE_PERIOD .. "s).")
