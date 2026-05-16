@@ -1,0 +1,13 @@
+{
+  "title": "Smart Maniac NPC",
+  "type": "npc",
+  "tags": ["npc", "fun", "roleplay"],
+  "ignore": [
+    "*.psd",
+    "*.xcf",
+    "*.svn",
+    ".git/*",
+    ".gitignore",
+    "README.md"
+  ]
+}

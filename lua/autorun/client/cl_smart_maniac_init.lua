@@ -1,0 +1,138 @@
+--[[
+    Smart Maniac NPC - Client Autorun
+    Loads client-side modules and registers spawn menu entries.
+]]
+
+-- Load shared config
+include("smart_maniac/sh_config.lua")
+
+-- Load client HUD extras (directional indicator, atmosphere overlay)
+include("smart_maniac/cl_hud.lua")
+
+-- Load client voice detection (sends voice status to server)
+include("smart_maniac/cl_voice_detection.lua")
+
+-- Load client TTS (text-to-speech voice output)
+include("smart_maniac/cl_tts.lua")
+
+-- ============================================================
+-- Spawn menu registration
+-- ============================================================
+
+list.Set("NPC", "npc_smart_maniac", {
+    Name     = "Smart Maniac",
+    Class    = "npc_smart_maniac",
+    Category = "Smart Maniac",
+})
+
+-- ============================================================
+-- Spawnmenu tool panel for configuration
+-- ============================================================
+
+hook.Add("PopulateToolMenu", "SmartManiac_ToolMenu", function()
+    spawnmenu.AddToolMenuOption("Utilities", "Smart Maniac", "sm_maniac_settings", "Settings", "", "", function(panel)
+        panel:ClearControls()
+
+        panel:Help("=== Smart Maniac NPC Settings ===")
+        panel:Help("Configure the AI-powered maniac NPC.")
+
+        panel:CheckBox("Enable Maniac NPC", "sm_maniac_enabled")
+
+        panel:NumSlider("Sight Range", "sm_maniac_sight_range", 200, 5000, 0)
+        panel:NumSlider("Hearing Range", "sm_maniac_hearing_range", 100, 3000, 0)
+        panel:NumSlider("Voice Chat Range", "sm_maniac_voice_range", 200, 5000, 0)
+
+        panel:NumSlider("Walk Speed", "sm_maniac_walk_speed", 20, 200, 0)
+        panel:NumSlider("Run Speed", "sm_maniac_run_speed", 100, 500, 0)
+
+        panel:NumSlider("Health", "sm_maniac_health", 50, 5000, 0)
+        panel:NumSlider("Attack Damage", "sm_maniac_damage", 5, 200, 0)
+
+        panel:Help("")
+        panel:Help("=== OpenAI Integration ===")
+        panel:Help("Enable AI-generated phrases and smart decisions.")
+        panel:CheckBox("Enable OpenAI", "sm_maniac_openai_enabled")
+        panel:TextEntry("API Key", "sm_maniac_openai_key")
+        panel:TextEntry("Model", "sm_maniac_openai_model")
+
+        panel:Help("")
+        panel:Help("=== Console Commands ===")
+        panel:Help("sm_maniac_spawn - Spawn a maniac")
+        panel:Help("sm_maniac_remove_all - Remove all maniacs")
+        panel:Help("sm_maniac_reload_config - Reload config")
+
+        panel:Button("Spawn Maniac", "sm_maniac_spawn")
+        panel:Button("Remove All Maniacs", "sm_maniac_remove_all")
+        panel:Button("Reload Config", "sm_maniac_reload_config")
+    end)
+end)
+
+-- ============================================================
+-- Kill notification
+-- ============================================================
+
+hook.Add("AddDeathNotice", "SmartManiac_DeathNotice", function(attacker, attackerTeam, inflictor, victim, victimTeam)
+    -- Custom death notice handling could go here
+end)
+
+-- ============================================================
+-- Minimap / compass indicator (optional HUD)
+-- ============================================================
+
+local showDebugHUD = CreateClientConVar("sm_maniac_debug_hud", "0", true, false, "Show debug HUD for maniac NPC")
+
+hook.Add("HUDPaint", "SmartManiac_DebugHUD", function()
+    if not showDebugHUD:GetBool() then return end
+
+    local lp = LocalPlayer()
+    if not IsValid(lp) then return end
+
+    local y = 10
+    draw.SimpleTextOutlined("Smart Maniac Debug HUD", "DermaDefaultBold", 10, y, Color(255, 100, 100), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP, 1, Color(0, 0, 0))
+    y = y + 20
+
+    for _, npc in ipairs(ents.FindByClass("npc_smart_maniac")) do
+        if not IsValid(npc) then continue end
+
+        local dist = math.Round(lp:GetPos():Distance(npc:GetPos()))
+        local state = npc:GetManiacState()
+        local stateName = npc.StateNames and npc.StateNames[state] or "Unknown"
+        local target = npc:GetManiacTarget()
+        local targetName = IsValid(target) and target:Nick() or "None"
+
+        local text = string.format("Maniac #%d | State: %s | Target: %s | Dist: %d",
+            npc:EntIndex(), stateName, targetName, dist)
+
+        draw.SimpleTextOutlined(text, "DermaDefault", 10, y, Color(255, 255, 255), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP, 1, Color(0, 0, 0))
+        y = y + 18
+    end
+end)
+
+-- ============================================================
+-- Proximity warning sound
+-- ============================================================
+
+local nextWarning = 0
+
+hook.Add("Think", "SmartManiac_ProximityWarning", function()
+    if CurTime() < nextWarning then return end
+
+    local lp = LocalPlayer()
+    if not IsValid(lp) or not lp:Alive() then return end
+
+    for _, npc in ipairs(ents.FindByClass("npc_smart_maniac")) do
+        if not IsValid(npc) then continue end
+
+        local dist = lp:GetPos():Distance(npc:GetPos())
+        local state = npc:GetManiacState()
+
+        -- Proximity breathing when maniac is close but hasn't spotted you yet
+        if dist < 400 and state ~= 3 and state ~= 4 then
+            surface.PlaySound("ambient/levels/canals/drip3.wav")
+            nextWarning = CurTime() + 3
+            break
+        end
+    end
+end)
+
+print("[Smart Maniac] Client module loaded successfully!")
