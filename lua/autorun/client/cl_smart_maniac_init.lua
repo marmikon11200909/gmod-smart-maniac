@@ -15,6 +15,9 @@ include("smart_maniac/cl_voice_detection.lua")
 -- Load client TTS (text-to-speech voice output)
 include("smart_maniac/cl_tts.lua")
 
+-- Load subtitle display system
+include("smart_maniac/cl_subtitles.lua")
+
 -- Load client voice capture (speech recognition via DHTML)
 include("smart_maniac/cl_voice_capture.lua")
 
