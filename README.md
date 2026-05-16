@@ -20,7 +20,7 @@ AI-powered maniac NPC for Garry's Mod with **live voice AI conversation**, intel
 ## Installation
 
 1. Download or clone this repository
-2. Place the `gmod-smart-maniac-init` folder into your Garry's Mod addons directory:
+2. Place the `gmod-smart-maniac` folder into your Garry's Mod addons directory:
    ```
    Steam/steamapps/common/GarrysMod/garrysmod/addons/
    ```
