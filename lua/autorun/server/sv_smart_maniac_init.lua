@@ -11,6 +11,7 @@ AddCSLuaFile("smart_maniac/sh_config.lua")
 AddCSLuaFile("smart_maniac/cl_hud.lua")
 AddCSLuaFile("smart_maniac/cl_voice_detection.lua")
 AddCSLuaFile("smart_maniac/cl_tts.lua")
+AddCSLuaFile("smart_maniac/cl_subtitles.lua")
 AddCSLuaFile("smart_maniac/cl_voice_capture.lua")
 
 -- Load server modules
