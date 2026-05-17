@@ -17,7 +17,7 @@ SmartManiac.API = SmartManiac.API or {}
 
 local pendingCallbacks = {}
 local requestCounter = 0
-local useRelayMode = false  -- Auto-switches to true after first SSL failure
+local useRelayMode = true  -- Default ON: GMod's HTTP() has known SSL issues with modern endpoints
 
 --- Pick the best client to relay through (prefer listen server host).
 local function GetRelayClient()

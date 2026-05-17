@@ -17,9 +17,11 @@ SmartManiac.VoiceConv = SmartManiac.VoiceConv or {}
 local VOICE_CONV_RANGE = 1500
 local MAX_HISTORY = 12
 local RESPONSE_COOLDOWN = 3
-local PROACTIVE_MIN_INTERVAL = 8
-local PROACTIVE_MAX_INTERVAL = 20
+local PROACTIVE_COOLDOWN = 5
+local PROACTIVE_MIN_INTERVAL = 15
+local PROACTIVE_MAX_INTERVAL = 35
 local PROACTIVE_RANGE = 800
+local SPEAKING_SUPPRESS_TIME = 8
 
 local VOICE_SYSTEM_PROMPT = "Ты — жуткий маньяк-убийца в хоррор-игре. Игрок говорит с тобой через голосовой чат.\n"
     .. "\n"
@@ -76,8 +78,10 @@ local IMITATION_SYSTEM_PROMPT = "Ты — маньяк-убийца. Игрок 
 
 -- Per-player-NPC conversation history
 local conversationHistory = {}
-local npcCooldowns = {}
+local responseCooldowns = {}   -- Cooldown for transcript-based responses
+local proactiveCooldowns = {}  -- Separate cooldown for proactive speech (does NOT block responses)
 local proactiveTimers = {}
+local speakingSuppression = {} -- NPCs suppressed from proactive speech while player talks
 
 local function GetConvKey(ply, npc)
     if not IsValid(ply) or not IsValid(npc) then return nil end
@@ -250,12 +254,16 @@ function SmartManiac.VoiceConv.HandleVoiceTranscript(ply, transcript)
     end
 
     local npcIdx = npc:EntIndex()
-    if npcCooldowns[npcIdx] and CurTime() < npcCooldowns[npcIdx] then
-        print("[Smart Maniac] HandleVoiceTranscript: NPC #" .. npcIdx .. " on cooldown, skipping response but saving transcript")
+    -- Voice responses use their own cooldown — NOT blocked by proactive speech
+    if responseCooldowns[npcIdx] and CurTime() < responseCooldowns[npcIdx] then
+        print("[Smart Maniac] HandleVoiceTranscript: NPC #" .. npcIdx .. " on response cooldown, skipping but saving transcript")
         AddToHistory(ply, npc, "user", transcript)
         return
     end
-    npcCooldowns[npcIdx] = CurTime() + RESPONSE_COOLDOWN
+    responseCooldowns[npcIdx] = CurTime() + RESPONSE_COOLDOWN
+
+    -- Suppress proactive speech for a while after responding to voice
+    speakingSuppression[npcIdx] = CurTime() + SPEAKING_SUPPRESS_TIME
 
     AddToHistory(ply, npc, "user", transcript)
     print("[Smart Maniac] Processing voice from " .. ply:Nick() .. ": " .. transcript .. " (NPC #" .. npcIdx .. ", dist=" .. math.Round(dist) .. ")")
@@ -297,8 +305,9 @@ function SmartManiac.VoiceConv.HandleContextualVoice(npc, ply)
     end
 
     local npcIdx = npc:EntIndex()
-    if npcCooldowns[npcIdx] and CurTime() < npcCooldowns[npcIdx] then return end
-    npcCooldowns[npcIdx] = CurTime() + RESPONSE_COOLDOWN
+    -- Use proactive cooldown (not response cooldown) for contextual voice
+    if proactiveCooldowns[npcIdx] and CurTime() < proactiveCooldowns[npcIdx] then return end
+    proactiveCooldowns[npcIdx] = CurTime() + PROACTIVE_COOLDOWN
 
     local context = GetGameContext(npc, ply)
     local messages = {
@@ -322,7 +331,24 @@ function SmartManiac.VoiceConv.ProactiveSpeech(npc)
     if apiKey == "" then return end
 
     local npcIdx = npc:EntIndex()
-    if npcCooldowns[npcIdx] and CurTime() < npcCooldowns[npcIdx] then return end
+
+    -- Don't speak proactively if suppressed (player recently spoke / NPC just responded)
+    if speakingSuppression[npcIdx] and CurTime() < speakingSuppression[npcIdx] then return end
+
+    -- Don't speak proactively if ANY player nearby is currently speaking (don't interrupt)
+    if SmartManiac.Voice and SmartManiac.Voice.SpeakingPlayers then
+        for ply, _ in pairs(SmartManiac.Voice.SpeakingPlayers) do
+            if IsValid(ply) and ply:Alive() then
+                local dist = npc:GetPos():Distance(ply:GetPos())
+                if dist <= VOICE_CONV_RANGE then
+                    return -- Player is speaking nearby, don't interrupt
+                end
+            end
+        end
+    end
+
+    -- Use proactive cooldown (separate from response cooldown)
+    if proactiveCooldowns[npcIdx] and CurTime() < proactiveCooldowns[npcIdx] then return end
 
     -- Find nearest player within proactive range
     local nearestPly = nil
@@ -339,7 +365,7 @@ function SmartManiac.VoiceConv.ProactiveSpeech(npc)
 
     if not IsValid(nearestPly) then return end
 
-    npcCooldowns[npcIdx] = CurTime() + RESPONSE_COOLDOWN
+    proactiveCooldowns[npcIdx] = CurTime() + PROACTIVE_COOLDOWN
 
     local context = GetGameContext(npc, nearestPly)
     local messages = {
@@ -412,10 +438,22 @@ timer.Create("SmartManiac_VoiceConvCleanup", 60, 0, function()
             end
         end
     end
-    for idx, _ in pairs(npcCooldowns) do
+    for idx, _ in pairs(responseCooldowns) do
         local ent = Entity(idx)
         if not IsValid(ent) then
-            npcCooldowns[idx] = nil
+            responseCooldowns[idx] = nil
+        end
+    end
+    for idx, _ in pairs(proactiveCooldowns) do
+        local ent = Entity(idx)
+        if not IsValid(ent) then
+            proactiveCooldowns[idx] = nil
+        end
+    end
+    for idx, _ in pairs(speakingSuppression) do
+        local ent = Entity(idx)
+        if not IsValid(ent) then
+            speakingSuppression[idx] = nil
         end
     end
     for idx, _ in pairs(proactiveTimers) do
