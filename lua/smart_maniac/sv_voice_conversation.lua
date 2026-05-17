@@ -21,7 +21,8 @@ local PROACTIVE_COOLDOWN = 5
 local PROACTIVE_MIN_INTERVAL = 15
 local PROACTIVE_MAX_INTERVAL = 35
 local PROACTIVE_RANGE = 800
-local SPEAKING_SUPPRESS_TIME = 8
+local SPEAKING_SUPPRESS_TIME = 20
+local lastPlayerSpokeNear = {} -- Track when a player last spoke near each NPC
 
 local VOICE_SYSTEM_PROMPT = "Ты — жуткий маньяк-убийца в хоррор-игре. Игрок говорит с тобой через голосовой чат.\n"
     .. "\n"
@@ -47,18 +48,23 @@ local VOICE_SYSTEM_PROMPT = "Ты — жуткий маньяк-убийца в 
     .. "- Будь непредсказуемым — не повторяй одно и то же\n"
     .. "- Иногда передразнивай игрока, повторяя его слова с насмешкой"
 
-local CONTEXTUAL_SYSTEM_PROMPT = "Ты — жуткий маньяк-убийца в хоррор-игре. Игрок ТОЛЬКО ЧТО ГОВОРИЛ С ТОБОЙ через голосовой чат.\n"
-    .. "Ты не разобрал точных слов, но слышал его голос. Ответь ему как будто ведёшь ДИАЛОГ.\n"
+local CONTEXTUAL_SYSTEM_PROMPT = "Ты — жуткий маньяк-убийца в хоррор-игре. Игрок ГОВОРИТ С ТОБОЙ через голосовой чат.\n"
+    .. "Ты слышал его голос и ОТВЕЧАЕШЬ ему — веди ЖИВОЙ ДИАЛОГ.\n"
     .. "\n"
-    .. "Правила:\n"
-    .. "- РЕАГИРУЙ на то что игрок что-то сказал (он обращался к тебе!)\n"
-    .. "- Можешь спросить 'Что ты сказал?', 'Повтори...', 'Я тебя слышу...'\n"
-    .. "- Можешь ответить угрозой, издёвкой, чёрным юмором\n"
-    .. "- Можешь сделать вид что понял: 'А, ты про это... хе-хе'\n"
+    .. "ЗАПРЕЩЕНО:\n"
+    .. "- НЕ спрашивай 'Что ты сказал?' или 'Повтори' или 'Не слышал'\n"
+    .. "- НЕ говори что не разобрал слова\n"
+    .. "- НЕ повторяй фразы из предыдущих ответов\n"
+    .. "\n"
+    .. "ВМЕСТО ЭТОГО:\n"
+    .. "- Отвечай как будто ПОНЯЛ игрока\n"
+    .. "- Угрожай, шути чёрным юмором, пугай, издевайся\n"
+    .. "- Веди себя как настоящий маньяк в диалоге\n"
+    .. "- Комментируй ситуацию, расстояние, здоровье игрока\n"
+    .. "- Можешь сказать что-то про его голос: 'Какой дрожащий голосок...'\n"
     .. "- 10-25 слов\n"
     .. "- Грубая мужская манера\n"
-    .. "- Учитывай ситуацию и историю разговора\n"
-    .. "- Будь РАЗНООБРАЗНЫМ — не повторяй предыдущие фразы\n"
+    .. "- Будь РАЗНООБРАЗНЫМ и НЕПРЕДСКАЗУЕМЫМ\n"
     .. "- ТОЛЬКО русский язык\n"
     .. "- Без кавычек"
 
@@ -193,7 +199,7 @@ local function BroadcastVoiceResponse(npc, phrase, speechType)
         SmartManiac.Sound.PlaySound(npc, "idle")
     end
 
-    print("[Smart Maniac] Voice response: " .. phrase)
+    print("[Smart Maniac] " .. speechType .. " speech: " .. phrase)
 end
 
 local function MakeAPICall(messages, maxTokens, temperature, callback)
@@ -323,9 +329,19 @@ function SmartManiac.VoiceConv.HandleVoiceEvent(ply, speakDuration)
     local npcIdx = npc:EntIndex()
 
     -- Don't respond if NPC is already speaking or waiting for API response
+    -- But allow voice responses to override if the current lock is from proactive speech
     if npcSpeakingUntil[npcIdx] and CurTime() < npcSpeakingUntil[npcIdx] then
-        print("[Smart Maniac] HandleVoiceEvent: NPC #" .. npcIdx .. " is currently speaking, skipping")
-        return
+        -- If player spoke recently and NPC is locked from proactive, still skip
+        -- (proactive lock is max 8s, voice response lock is 15s)
+        local timeLeft = npcSpeakingUntil[npcIdx] - CurTime()
+        if timeLeft > 8 then
+            -- This is a voice response lock (15s), don't override
+            print("[Smart Maniac] HandleVoiceEvent: NPC #" .. npcIdx .. " is responding to voice, skipping")
+            return
+        end
+        -- Otherwise it's a proactive lock — voice response takes priority, cancel it
+        print("[Smart Maniac] HandleVoiceEvent: NPC #" .. npcIdx .. " was speaking proactively, voice response takes priority")
+        npcSpeakingUntil[npcIdx] = nil
     end
 
     -- Use voice event cooldown (separate from transcript and proactive cooldowns)
@@ -341,9 +357,11 @@ function SmartManiac.VoiceConv.HandleVoiceEvent(ply, speakDuration)
 
     voiceEventCooldowns[npcIdx] = CurTime() + RESPONSE_COOLDOWN
     -- Lock NPC from ALL speech while we wait for API response + playback
-    npcSpeakingUntil[npcIdx] = CurTime() + 12
-    -- Suppress proactive speech after responding
+    npcSpeakingUntil[npcIdx] = CurTime() + 15
+    -- Suppress proactive speech after responding (long suppression to avoid spam)
     speakingSuppression[npcIdx] = CurTime() + SPEAKING_SUPPRESS_TIME
+    -- Track that player recently spoke near this NPC
+    lastPlayerSpokeNear[npcIdx] = CurTime()
 
     print("[Smart Maniac] HandleVoiceEvent: " .. ply:Nick() .. " spoke for " .. string.format("%.1f", speakDuration) .. "s near NPC #" .. npcIdx .. " (dist=" .. math.Round(dist) .. ")")
 
@@ -401,6 +419,9 @@ function SmartManiac.VoiceConv.ProactiveSpeech(npc)
     -- Don't speak proactively if suppressed (player recently spoke / NPC just responded)
     if speakingSuppression[npcIdx] and CurTime() < speakingSuppression[npcIdx] then return end
 
+    -- Don't speak proactively if a player spoke near this NPC recently (20 sec window)
+    if lastPlayerSpokeNear[npcIdx] and CurTime() - lastPlayerSpokeNear[npcIdx] < SPEAKING_SUPPRESS_TIME then return end
+
     -- Don't speak proactively if ANY player nearby is currently speaking (don't interrupt)
     if SmartManiac.Voice and SmartManiac.Voice.SpeakingPlayers then
         for ply, _ in pairs(SmartManiac.Voice.SpeakingPlayers) do
@@ -432,8 +453,8 @@ function SmartManiac.VoiceConv.ProactiveSpeech(npc)
     if not IsValid(nearestPly) then return end
 
     proactiveCooldowns[npcIdx] = CurTime() + PROACTIVE_COOLDOWN
-    -- Lock NPC from other speech while API call is in flight
-    npcSpeakingUntil[npcIdx] = CurTime() + 10
+    -- Lock NPC from other speech while API call is in flight (shorter for proactive)
+    npcSpeakingUntil[npcIdx] = CurTime() + 8
 
     local context = GetGameContext(npc, nearestPly)
     local messages = {
