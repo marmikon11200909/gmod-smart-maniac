@@ -305,7 +305,7 @@ local function TrySpeechSynthesis(npc, phrase)
     return true
 end
 
---- Main speak function. Always uses Google TTS (reliable), optionally also SpeechSynthesis.
+--- Main speak function. Uses Google TTS only (zombie voice the user prefers).
 function SmartManiac.TTS.Speak(npc, phrase)
     if not IsValid(npc) then return end
     if not phrase or phrase == "" then return end
@@ -321,11 +321,8 @@ function SmartManiac.TTS.Speak(npc, phrase)
 
     print("[Smart Maniac] TTS Speaking: " .. string.sub(phrase, 1, 80))
 
-    -- PRIMARY: Google TTS (always works in GMod)
+    -- Google TTS only (zombie voice - deep and menacing)
     SpeakGoogleTTS(npc, phrase)
-
-    -- BONUS: Also try SpeechSynthesis if available (adds depth)
-    TrySpeechSynthesis(npc, phrase)
 end
 
 --- Stop all TTS playback for an NPC.

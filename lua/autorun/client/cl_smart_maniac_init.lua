@@ -21,6 +21,9 @@ include("smart_maniac/cl_subtitles.lua")
 -- Load client voice capture (speech recognition via DHTML)
 include("smart_maniac/cl_voice_capture.lua")
 
+-- Load client API relay (SSL fix: routes HTTP requests through DHTML fetch)
+include("smart_maniac/cl_api_relay.lua")
+
 -- ============================================================
 -- Spawn menu registration
 -- ============================================================

@@ -191,16 +191,14 @@ local function MakeAPICall(messages, maxTokens, temperature, callback)
         temperature = temperature or 0.95,
     })
 
-    HTTP({
-        url     = apiUrl,
-        method  = "POST",
-        headers = {
-            ["Content-Type"]  = "application/json",
-            ["Authorization"] = "Bearer " .. apiKey,
-        },
-        body    = body,
-        type    = "application/json",
-        success = function(code, responseBody)
+    local headers = {
+        ["Content-Type"]  = "application/json",
+        ["Authorization"] = "Bearer " .. apiKey,
+    }
+
+    -- Use SmartManiac.API.Request which auto-falls back to DHTML relay on SSL errors
+    SmartManiac.API.Request(apiUrl, "POST", headers, body,
+        function(code, responseBody)
             if code ~= 200 then
                 print("[Smart Maniac] Voice AI HTTP error: " .. tostring(code))
                 print("[Smart Maniac] Response: " .. string.sub(tostring(responseBody), 1, 200))
@@ -215,30 +213,52 @@ local function MakeAPICall(messages, maxTokens, temperature, callback)
                 end
             end
         end,
-        failed = function(err)
+        function(err)
             print("[Smart Maniac] Voice AI request failed: " .. tostring(err))
-        end,
-    })
+        end
+    )
 end
 
 --- Handle a voice transcript from a player (main conversation handler).
 function SmartManiac.VoiceConv.HandleVoiceTranscript(ply, transcript)
-    if not IsValid(ply) then return end
-    if not transcript or transcript == "" then return end
-    if not GetConVar("sm_maniac_voice_ai"):GetBool() then return end
-    if not GetConVar("sm_maniac_openai_enabled"):GetBool() then return end
+    if not IsValid(ply) then
+        print("[Smart Maniac] HandleVoiceTranscript: invalid player")
+        return
+    end
+    if not transcript or transcript == "" then
+        print("[Smart Maniac] HandleVoiceTranscript: empty transcript")
+        return
+    end
+    if not GetConVar("sm_maniac_voice_ai"):GetBool() then
+        print("[Smart Maniac] HandleVoiceTranscript: voice AI disabled (sm_maniac_voice_ai 0)")
+        return
+    end
+    if not GetConVar("sm_maniac_openai_enabled"):GetBool() then
+        print("[Smart Maniac] HandleVoiceTranscript: OpenAI disabled (sm_maniac_openai_enabled 0)")
+        return
+    end
     local apiKey = GetConVar("sm_maniac_openai_key"):GetString()
-    if apiKey == "" then return end
+    if apiKey == "" then
+        print("[Smart Maniac] HandleVoiceTranscript: no API key set (sm_maniac_openai_key)")
+        return
+    end
 
     local npc, dist = FindNearestManiac(ply, VOICE_CONV_RANGE)
-    if not IsValid(npc) then return end
+    if not IsValid(npc) then
+        print("[Smart Maniac] HandleVoiceTranscript: no maniac within " .. VOICE_CONV_RANGE .. " units")
+        return
+    end
 
     local npcIdx = npc:EntIndex()
-    if npcCooldowns[npcIdx] and CurTime() < npcCooldowns[npcIdx] then return end
+    if npcCooldowns[npcIdx] and CurTime() < npcCooldowns[npcIdx] then
+        print("[Smart Maniac] HandleVoiceTranscript: NPC #" .. npcIdx .. " on cooldown, skipping response but saving transcript")
+        AddToHistory(ply, npc, "user", transcript)
+        return
+    end
     npcCooldowns[npcIdx] = CurTime() + RESPONSE_COOLDOWN
 
     AddToHistory(ply, npc, "user", transcript)
-    print("[Smart Maniac] Processing voice from " .. ply:Nick() .. ": " .. transcript)
+    print("[Smart Maniac] Processing voice from " .. ply:Nick() .. ": " .. transcript .. " (NPC #" .. npcIdx .. ", dist=" .. math.Round(dist) .. ")")
 
     -- Randomly choose between normal response (70%) and imitation/mockery (30%)
     local useImitation = math.random() < 0.3
@@ -338,7 +358,11 @@ end
 net.Receive("SmartManiac_VoiceTranscript", function(len, ply)
     if not IsValid(ply) then return end
     local transcript = net.ReadString()
-    if not transcript or transcript == "" then return end
+    if not transcript or transcript == "" then
+        print("[Smart Maniac] Empty transcript received from " .. ply:Nick() .. ", ignoring")
+        return
+    end
+    print("[Smart Maniac] >>> TRANSCRIPT from " .. ply:Nick() .. ": " .. transcript)
     SmartManiac.VoiceConv.HandleVoiceTranscript(ply, transcript)
 end)
 

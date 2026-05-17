@@ -13,8 +13,10 @@ AddCSLuaFile("smart_maniac/cl_voice_detection.lua")
 AddCSLuaFile("smart_maniac/cl_tts.lua")
 AddCSLuaFile("smart_maniac/cl_subtitles.lua")
 AddCSLuaFile("smart_maniac/cl_voice_capture.lua")
+AddCSLuaFile("smart_maniac/cl_api_relay.lua")
 
 -- Load server modules
+include("smart_maniac/sv_api_relay.lua")  -- Must load BEFORE other modules that use SmartManiac.API
 include("smart_maniac/sv_ai_brain.lua")
 include("smart_maniac/sv_voice_detection.lua")
 include("smart_maniac/sv_openai.lua")
@@ -28,6 +30,8 @@ util.AddNetworkString("SmartManiac_VoiceDetected")
 util.AddNetworkString("SmartManiac_VoiceStatus")
 util.AddNetworkString("SmartManiac_StateChanged")
 util.AddNetworkString("SmartManiac_VoiceTranscript")
+util.AddNetworkString("SmartManiac_APIRequest")
+util.AddNetworkString("SmartManiac_APIResponse")
 
 -- ============================================================
 -- Admin commands
@@ -141,6 +145,7 @@ concommand.Add("sm_maniac_test_openai", function(ply)
     end
 
     msg("[Smart Maniac] Sending test request to OpenAI...")
+    msg("[Smart Maniac] Relay mode: " .. tostring(SmartManiac.API.IsRelayMode()))
 
     local body = util.TableToJSON({
         model = model,
@@ -151,16 +156,13 @@ concommand.Add("sm_maniac_test_openai", function(ply)
         max_tokens = 20,
     })
 
-    HTTP({
-        url     = apiUrl,
-        method  = "POST",
-        headers = {
-            ["Content-Type"]  = "application/json",
-            ["Authorization"] = "Bearer " .. apiKey,
-        },
-        body    = body,
-        type    = "application/json",
-        success = function(code, responseBody)
+    local headers = {
+        ["Content-Type"]  = "application/json",
+        ["Authorization"] = "Bearer " .. apiKey,
+    }
+
+    SmartManiac.API.Request(apiUrl, "POST", headers, body,
+        function(code, responseBody)
             msg("[Smart Maniac] HTTP response code: " .. tostring(code))
             if code == 200 then
                 local data = util.JSONToTable(responseBody)
@@ -184,12 +186,12 @@ concommand.Add("sm_maniac_test_openai", function(ply)
                 msg("[Smart Maniac] Body: " .. string.sub(responseBody, 1, 300))
             end
         end,
-        failed = function(err)
+        function(err)
             msg("[Smart Maniac] FAILED: " .. tostring(err))
             msg("[Smart Maniac] This usually means GMod cannot make HTTP requests.")
-            msg("[Smart Maniac] Make sure you are hosting a server (not singleplayer listen server).")
-        end,
-    })
+            msg("[Smart Maniac] Try: sm_maniac_force_relay 1 (forces DHTML relay for SSL fix)")
+        end
+    )
 end)
 
 -- ============================================================
