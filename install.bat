@@ -1,129 +1,207 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
 title Smart Maniac - Installer
 color 0A
 
+echo.
 echo ============================================================
-echo   Smart Maniac NPC - Автоматическая установка
+echo   SMART MANIAC NPC - INSTALLER
 echo ============================================================
 echo.
 
-:: Try common Steam paths
-set "FOUND_PATH="
+:: Get the directory where this bat file is located (contains lua/ folder)
+set "SOURCE_DIR=%~dp0"
+if "!SOURCE_DIR:~-1!"=="\" set "SOURCE_DIR=!SOURCE_DIR:~0,-1!"
 
-:: Check standard Steam paths
-if exist "C:\Program Files (x86)\Steam\steamapps\common\GarrysMod\garrysmod\addons" (
-    set "FOUND_PATH=C:\Program Files (x86)\Steam\steamapps\common\GarrysMod\garrysmod\addons"
-)
-if exist "C:\Program Files\Steam\steamapps\common\GarrysMod\garrysmod\addons" (
-    set "FOUND_PATH=C:\Program Files\Steam\steamapps\common\GarrysMod\garrysmod\addons"
-)
-if exist "D:\Steam\steamapps\common\GarrysMod\garrysmod\addons" (
-    set "FOUND_PATH=D:\Steam\steamapps\common\GarrysMod\garrysmod\addons"
-)
-if exist "D:\SteamLibrary\steamapps\common\GarrysMod\garrysmod\addons" (
-    set "FOUND_PATH=D:\SteamLibrary\steamapps\common\GarrysMod\garrysmod\addons"
-)
-if exist "E:\Steam\steamapps\common\GarrysMod\garrysmod\addons" (
-    set "FOUND_PATH=E:\Steam\steamapps\common\GarrysMod\garrysmod\addons"
-)
-if exist "E:\SteamLibrary\steamapps\common\GarrysMod\garrysmod\addons" (
-    set "FOUND_PATH=E:\SteamLibrary\steamapps\common\GarrysMod\garrysmod\addons"
-)
-if exist "F:\Steam\steamapps\common\GarrysMod\garrysmod\addons" (
-    set "FOUND_PATH=F:\Steam\steamapps\common\GarrysMod\garrysmod\addons"
-)
-if exist "F:\SteamLibrary\steamapps\common\GarrysMod\garrysmod\addons" (
-    set "FOUND_PATH=F:\SteamLibrary\steamapps\common\GarrysMod\garrysmod\addons"
-)
-
-if defined FOUND_PATH (
-    echo [OK] Garry's Mod найден: %FOUND_PATH%
+:: Verify lua folder exists in source
+if not exist "!SOURCE_DIR!\lua" (
+    echo [ERROR] Folder "lua" not found next to install.bat!
     echo.
-    goto :install
-)
-
-:: Not found automatically, ask user
-echo [!] Garry's Mod не найден автоматически.
-echo.
-echo Введите путь к папке addons вашего Garry's Mod:
-echo Пример: D:\Steam\steamapps\common\GarrysMod\garrysmod\addons
-echo.
-set /p "FOUND_PATH=Путь: "
-
-if not exist "%FOUND_PATH%" (
+    echo Make sure install.bat is inside the addon folder
+    echo that contains the "lua" folder.
     echo.
-    echo [ОШИБКА] Папка не найдена: %FOUND_PATH%
-    echo Проверьте путь и попробуйте снова.
+    echo Current location: !SOURCE_DIR!
     echo.
     pause
     exit /b 1
 )
 
-:install
-echo Установка Smart Maniac в: %FOUND_PATH%\gmod-smart-maniac
+echo [OK] Addon files found: !SOURCE_DIR!\lua
 echo.
 
-:: Get the directory where this bat file is located
-set "SOURCE_DIR=%~dp0"
+:: ============================================================
+:: Try to find GMod automatically
+:: ============================================================
+set "ADDONS_PATH="
 
-:: Remove trailing backslash
-if "%SOURCE_DIR:~-1%"=="\" set "SOURCE_DIR=%SOURCE_DIR:~0,-1%"
-
-:: Target directory
-set "TARGET_DIR=%FOUND_PATH%\gmod-smart-maniac"
-
-:: Remove old installation if exists
-if exist "%TARGET_DIR%" (
-    echo [*] Удаляю старую версию...
-    rmdir /s /q "%TARGET_DIR%" 2>nul
+:: Method 1: Check Windows registry for Steam install path
+for /f "tokens=2*" %%a in ('reg query "HKLM\SOFTWARE\WOW6432Node\Valve\Steam" /v InstallPath 2^>nul') do set "STEAM_REG=%%b"
+if defined STEAM_REG (
+    if exist "!STEAM_REG!\steamapps\common\GarrysMod\garrysmod\addons" (
+        set "ADDONS_PATH=!STEAM_REG!\steamapps\common\GarrysMod\garrysmod\addons"
+        echo [OK] GMod found via registry: !ADDONS_PATH!
+        goto :do_install
+    )
+)
+for /f "tokens=2*" %%a in ('reg query "HKLM\SOFTWARE\Valve\Steam" /v InstallPath 2^>nul') do set "STEAM_REG=%%b"
+if defined STEAM_REG (
+    if exist "!STEAM_REG!\steamapps\common\GarrysMod\garrysmod\addons" (
+        set "ADDONS_PATH=!STEAM_REG!\steamapps\common\GarrysMod\garrysmod\addons"
+        echo [OK] GMod found via registry: !ADDONS_PATH!
+        goto :do_install
+    )
 )
 
-:: Create target directory
-mkdir "%TARGET_DIR%" 2>nul
+:: Method 2: Check common paths on all drives
+for %%D in (C D E F G H) do (
+    if exist "%%D:\Program Files (x86)\Steam\steamapps\common\GarrysMod\garrysmod\addons" (
+        set "ADDONS_PATH=%%D:\Program Files (x86)\Steam\steamapps\common\GarrysMod\garrysmod\addons"
+        echo [OK] GMod found: !ADDONS_PATH!
+        goto :do_install
+    )
+    if exist "%%D:\Program Files\Steam\steamapps\common\GarrysMod\garrysmod\addons" (
+        set "ADDONS_PATH=%%D:\Program Files\Steam\steamapps\common\GarrysMod\garrysmod\addons"
+        echo [OK] GMod found: !ADDONS_PATH!
+        goto :do_install
+    )
+    if exist "%%D:\Steam\steamapps\common\GarrysMod\garrysmod\addons" (
+        set "ADDONS_PATH=%%D:\Steam\steamapps\common\GarrysMod\garrysmod\addons"
+        echo [OK] GMod found: !ADDONS_PATH!
+        goto :do_install
+    )
+    if exist "%%D:\SteamLibrary\steamapps\common\GarrysMod\garrysmod\addons" (
+        set "ADDONS_PATH=%%D:\SteamLibrary\steamapps\common\GarrysMod\garrysmod\addons"
+        echo [OK] GMod found: !ADDONS_PATH!
+        goto :do_install
+    )
+    if exist "%%D:\Games\Steam\steamapps\common\GarrysMod\garrysmod\addons" (
+        set "ADDONS_PATH=%%D:\Games\Steam\steamapps\common\GarrysMod\garrysmod\addons"
+        echo [OK] GMod found: !ADDONS_PATH!
+        goto :do_install
+    )
+    if exist "%%D:\Games\SteamLibrary\steamapps\common\GarrysMod\garrysmod\addons" (
+        set "ADDONS_PATH=%%D:\Games\SteamLibrary\steamapps\common\GarrysMod\garrysmod\addons"
+        echo [OK] GMod found: !ADDONS_PATH!
+        goto :do_install
+    )
+)
 
-:: Copy addon files
-echo [*] Копирую файлы аддона...
-xcopy "%SOURCE_DIR%\lua" "%TARGET_DIR%\lua" /s /e /i /q >nul 2>&1
-if exist "%SOURCE_DIR%\materials" xcopy "%SOURCE_DIR%\materials" "%TARGET_DIR%\materials" /s /e /i /q >nul 2>&1
-if exist "%SOURCE_DIR%\models" xcopy "%SOURCE_DIR%\models" "%TARGET_DIR%\models" /s /e /i /q >nul 2>&1
-if exist "%SOURCE_DIR%\sound" xcopy "%SOURCE_DIR%\sound" "%TARGET_DIR%\sound" /s /e /i /q >nul 2>&1
-if exist "%SOURCE_DIR%\resource" xcopy "%SOURCE_DIR%\resource" "%TARGET_DIR%\resource" /s /e /i /q >nul 2>&1
+:: ============================================================
+:: GMod not found - ask user
+:: ============================================================
+echo [!] GMod not found automatically.
+echo.
+echo HOW TO FIND YOUR ADDONS FOLDER:
+echo   1. Open Steam
+echo   2. Right-click "Garry's Mod" in library
+echo   3. Click "Properties" then "Local Files" then "Browse"
+echo   4. Open folder: garrysmod\addons
+echo   5. Copy the path from the address bar
+echo.
+echo Type the FULL path to your addons folder:
+echo.
+set /p "ADDONS_PATH=Path: "
 
-:: Verify installation
-if exist "%TARGET_DIR%\lua\autorun\server\sv_smart_maniac_init.lua" (
+:: Remove quotes if user added them
+set "ADDONS_PATH=!ADDONS_PATH:"=!"
+
+if not exist "!ADDONS_PATH!" (
     echo.
+    echo [ERROR] Folder not found: !ADDONS_PATH!
+    echo.
+    echo === MANUAL INSTALL ===
+    echo   1. Copy this entire folder to your addons:
+    echo      !SOURCE_DIR!
+    echo   2. Paste into: ...\GarrysMod\garrysmod\addons\
+    echo   3. Rename the pasted folder to: gmod-smart-maniac
+    echo.
+    pause
+    exit /b 1
+)
+
+:: ============================================================
+:: Install
+:: ============================================================
+:do_install
+echo.
+set "TARGET=!ADDONS_PATH!\gmod-smart-maniac"
+
+:: Remove old version
+if exist "!TARGET!" (
+    echo [*] Removing old version...
+    rmdir /s /q "!TARGET!" 2>nul
+    timeout /t 1 /nobreak >nul
+)
+
+:: Create target
+mkdir "!TARGET!" 2>nul
+if not exist "!TARGET!" (
+    echo [ERROR] Cannot create folder: !TARGET!
+    echo Try: right-click install.bat - Run as Administrator
+    echo.
+    pause
+    exit /b 1
+)
+
+:: Copy files (show output so user sees progress)
+echo [*] Copying addon files...
+echo.
+
+xcopy "!SOURCE_DIR!\lua" "!TARGET!\lua" /s /e /i /y
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Failed to copy files!
+    echo Try: right-click install.bat - Run as Administrator
+    echo.
+    pause
+    exit /b 1
+)
+
+:: Copy optional folders
+if exist "!SOURCE_DIR!\materials" xcopy "!SOURCE_DIR!\materials" "!TARGET!\materials" /s /e /i /y >nul 2>&1
+if exist "!SOURCE_DIR!\models" xcopy "!SOURCE_DIR!\models" "!TARGET!\models" /s /e /i /y >nul 2>&1
+if exist "!SOURCE_DIR!\sound" xcopy "!SOURCE_DIR!\sound" "!TARGET!\sound" /s /e /i /y >nul 2>&1
+if exist "!SOURCE_DIR!\resource" xcopy "!SOURCE_DIR!\resource" "!TARGET!\resource" /s /e /i /y >nul 2>&1
+
+:: Verify
+echo.
+if exist "!TARGET!\lua\autorun\server\sv_smart_maniac_init.lua" (
     echo ============================================================
-    echo   [OK] Smart Maniac успешно установлен!
+    echo   [OK] SMART MANIAC INSTALLED!
     echo ============================================================
     echo.
-    echo   Путь: %TARGET_DIR%
+    echo   Installed to: !TARGET!
     echo.
-    echo   --- НАСТРОЙКА В GARRY'S MOD ---
+    echo   === SETUP IN GARRY'S MOD ===
     echo.
-    echo   1. Запусти Garry's Mod
-    echo   2. Открой консоль (~)
-    echo   3. Введи команду быстрой настройки:
+    echo   1. Launch Garry's Mod
+    echo   2. Start a game (Create Multiplayer or Singleplayer)
+    echo   3. Open console (press ~ key)
+    echo   4. Type:
     echo.
-    echo      sm_maniac_setup ТВОЙ_OPENROUTER_КЛЮЧ
+    echo      sm_maniac_setup YOUR_OPENROUTER_KEY
     echo.
-    echo   4. Получи ключ тут: https://openrouter.ai/workspaces/default/keys
-    echo   5. Заспавни маньяка: sm_maniac_spawn
-    echo   6. Подойди к маньяку и нажми V чтобы говорить!
+    echo   5. Get key here: https://openrouter.ai/workspaces/default/keys
+    echo   6. Spawn maniac: sm_maniac_spawn
+    echo   7. Walk up to maniac and press V to talk!
     echo.
-    echo   --- ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ ---
+    echo   === COMMANDS ===
     echo.
-    echo   sm_maniac_spawn          - заспавнить маньяка
-    echo   sm_maniac_test_openai    - тест подключения к ИИ
-    echo   sm_maniac_say "текст"    - заставить маньяка сказать фразу
-    echo   sm_maniac_voice_debug    - информация о голосовой системе
-    echo   sm_maniac_force_relay 1  - включить SSL-фикс (если ИИ не отвечает)
+    echo   sm_maniac_spawn          - spawn maniac
+    echo   sm_maniac_test_openai    - test AI connection
+    echo   sm_maniac_voice_debug    - voice debug info
+    echo   sm_maniac_force_relay 1  - force SSL fix
     echo.
 ) else (
+    echo [ERROR] Installation failed - files not copied.
     echo.
-    echo [ОШИБКА] Установка не удалась! Файлы не скопировались.
-    echo Попробуйте запустить от имени администратора.
+    echo === MANUAL INSTALL ===
+    echo   1. Copy this folder: !SOURCE_DIR!
+    echo   2. Paste into: !ADDONS_PATH!\
+    echo   3. Rename to: gmod-smart-maniac
     echo.
 )
 
-pause
+echo Press any key to close...
+pause >nul
