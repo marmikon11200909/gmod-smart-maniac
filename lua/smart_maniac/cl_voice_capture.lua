@@ -177,8 +177,7 @@ function initRecognition() {
     };
 
     recognition.onerror = function(event) {
-        if (event.error === 'no-speech' || event.error === 'aborted') return;
-        gmod.recognitionError(event.error);
+        gmod.recognitionError(event.error || 'unknown');
     };
 
     recognition.onend = function() {
