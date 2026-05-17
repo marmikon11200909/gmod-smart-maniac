@@ -1,19 +1,20 @@
 --[[
     Smart Maniac NPC - Voice Detection System (Server)
-    Receives voice status updates from clients and notifies nearby maniac NPCs
-    so they can investigate the sound source.
+    Receives voice status updates from clients and notifies nearby maniac NPCs.
     
-    IMPORTANT: This module only handles NPC behavior (investigation).
-    Voice RESPONSES are handled by sv_voice_conversation.lua via transcript.
-    DO NOT generate speech responses here — it causes cooldown conflicts
-    that block the transcript-based responses from firing.
+    When player STOPS speaking: triggers AI voice response via HandleVoiceEvent.
+    While player IS speaking: makes NPCs investigate the sound source.
+    
+    Voice responses use their own cooldown (voiceEventCooldowns) separate from
+    both transcript cooldowns and proactive speech cooldowns.
 ]]
 
 SmartManiac = SmartManiac or {}
 SmartManiac.Voice = SmartManiac.Voice or {}
 
--- Track which players are currently speaking
+-- Track which players are currently speaking and when they started
 SmartManiac.Voice.SpeakingPlayers = SmartManiac.Voice.SpeakingPlayers or {}
+SmartManiac.Voice.SpeakStartTime = SmartManiac.Voice.SpeakStartTime or {}
 
 --- Receive voice status from clients.
 net.Receive("SmartManiac_VoiceStatus", function(len, ply)
@@ -23,10 +24,27 @@ net.Receive("SmartManiac_VoiceStatus", function(len, ply)
 
     if isSpeaking then
         SmartManiac.Voice.SpeakingPlayers[ply] = true
+        SmartManiac.Voice.SpeakStartTime[ply] = CurTime()
         print("[Smart Maniac] Player " .. ply:Nick() .. " started speaking")
     else
+        local speakDuration = 0
+        if SmartManiac.Voice.SpeakStartTime[ply] then
+            speakDuration = CurTime() - SmartManiac.Voice.SpeakStartTime[ply]
+        end
         SmartManiac.Voice.SpeakingPlayers[ply] = nil
-        print("[Smart Maniac] Player " .. ply:Nick() .. " stopped speaking")
+        SmartManiac.Voice.SpeakStartTime[ply] = nil
+        print("[Smart Maniac] Player " .. ply:Nick() .. " stopped speaking (duration: " .. string.format("%.1f", speakDuration) .. "s)")
+
+        -- Player stopped speaking — trigger voice response from nearby maniacs
+        -- Only respond if player spoke for at least 0.5 seconds (not just a mic click)
+        if speakDuration >= 0.5 then
+            timer.Simple(0.3, function()
+                if not IsValid(ply) then return end
+                if SmartManiac.VoiceConv and SmartManiac.VoiceConv.HandleVoiceEvent then
+                    SmartManiac.VoiceConv.HandleVoiceEvent(ply, speakDuration)
+                end
+            end)
+        end
     end
 end)
 

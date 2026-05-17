@@ -47,12 +47,18 @@ local VOICE_SYSTEM_PROMPT = "Ты — жуткий маньяк-убийца в 
     .. "- Будь непредсказуемым — не повторяй одно и то же\n"
     .. "- Иногда передразнивай игрока, повторяя его слова с насмешкой"
 
-local CONTEXTUAL_SYSTEM_PROMPT = "Ты — маньяк-убийца в хоррор-игре. Ты слышишь голос игрока рядом но не разбираешь слов.\n"
-    .. "Скажи жуткую фразу реагируя на голос:\n"
-    .. "- 10-20 слов\n"
+local CONTEXTUAL_SYSTEM_PROMPT = "Ты — жуткий маньяк-убийца в хоррор-игре. Игрок ТОЛЬКО ЧТО ГОВОРИЛ С ТОБОЙ через голосовой чат.\n"
+    .. "Ты не разобрал точных слов, но слышал его голос. Ответь ему как будто ведёшь ДИАЛОГ.\n"
+    .. "\n"
+    .. "Правила:\n"
+    .. "- РЕАГИРУЙ на то что игрок что-то сказал (он обращался к тебе!)\n"
+    .. "- Можешь спросить 'Что ты сказал?', 'Повтори...', 'Я тебя слышу...'\n"
+    .. "- Можешь ответить угрозой, издёвкой, чёрным юмором\n"
+    .. "- Можешь сделать вид что понял: 'А, ты про это... хе-хе'\n"
+    .. "- 10-25 слов\n"
     .. "- Грубая мужская манера\n"
-    .. "- Угрожающе и зловеще\n"
-    .. "- Учитывай ситуацию (что ты делаешь сейчас)\n"
+    .. "- Учитывай ситуацию и историю разговора\n"
+    .. "- Будь РАЗНООБРАЗНЫМ — не повторяй предыдущие фразы\n"
     .. "- ТОЛЬКО русский язык\n"
     .. "- Без кавычек"
 
@@ -79,6 +85,7 @@ local IMITATION_SYSTEM_PROMPT = "Ты — маньяк-убийца. Игрок 
 -- Per-player-NPC conversation history
 local conversationHistory = {}
 local responseCooldowns = {}   -- Cooldown for transcript-based responses
+local voiceEventCooldowns = {} -- Cooldown for voice-event responses (player spoke but no transcript)
 local proactiveCooldowns = {}  -- Separate cooldown for proactive speech (does NOT block responses)
 local proactiveTimers = {}
 local speakingSuppression = {} -- NPCs suppressed from proactive speech while player talks
@@ -291,35 +298,74 @@ function SmartManiac.VoiceConv.HandleVoiceTranscript(ply, transcript)
     end)
 end
 
---- Handle contextual voice (player is talking but STT unavailable).
-function SmartManiac.VoiceConv.HandleContextualVoice(npc, ply)
-    if not IsValid(npc) or not IsValid(ply) then return end
+--- Handle voice event: player spoke near a maniac (called when player STOPS speaking).
+--- This is the PRIMARY voice response system — works without STT.
+--- Uses its own cooldown so it doesn't block transcript responses if STT ever works.
+function SmartManiac.VoiceConv.HandleVoiceEvent(ply, speakDuration)
+    if not IsValid(ply) then return end
     if not GetConVar("sm_maniac_voice_ai"):GetBool() then return end
     if not GetConVar("sm_maniac_openai_enabled"):GetBool() then return end
     local apiKey = GetConVar("sm_maniac_openai_key"):GetString()
-    if apiKey == "" then
-        if isfunction(npc.SayPhrase) then
-            npc:SayPhrase("investigate")
-        end
+    if apiKey == "" then return end
+
+    local npc, dist = FindNearestManiac(ply, VOICE_CONV_RANGE)
+    if not IsValid(npc) then return end
+
+    local npcIdx = npc:EntIndex()
+
+    -- Use voice event cooldown (separate from transcript and proactive cooldowns)
+    if voiceEventCooldowns[npcIdx] and CurTime() < voiceEventCooldowns[npcIdx] then
+        print("[Smart Maniac] HandleVoiceEvent: NPC #" .. npcIdx .. " on voice event cooldown")
+        return
+    end
+    -- Don't respond if we already got a real transcript for this speech (STT worked)
+    if responseCooldowns[npcIdx] and CurTime() < responseCooldowns[npcIdx] then
+        print("[Smart Maniac] HandleVoiceEvent: NPC #" .. npcIdx .. " already responded via transcript")
         return
     end
 
-    local npcIdx = npc:EntIndex()
-    -- Use proactive cooldown (not response cooldown) for contextual voice
-    if proactiveCooldowns[npcIdx] and CurTime() < proactiveCooldowns[npcIdx] then return end
-    proactiveCooldowns[npcIdx] = CurTime() + PROACTIVE_COOLDOWN
+    voiceEventCooldowns[npcIdx] = CurTime() + RESPONSE_COOLDOWN
+    -- Suppress proactive speech after responding
+    speakingSuppression[npcIdx] = CurTime() + SPEAKING_SUPPRESS_TIME
+
+    print("[Smart Maniac] HandleVoiceEvent: " .. ply:Nick() .. " spoke for " .. string.format("%.1f", speakDuration) .. "s near NPC #" .. npcIdx .. " (dist=" .. math.Round(dist) .. ")")
 
     local context = GetGameContext(npc, ply)
+    local durationHint = ""
+    if speakDuration > 5 then
+        durationHint = " Игрок говорил долго (" .. math.Round(speakDuration) .. " сек) — он явно хочет поговорить."
+    elseif speakDuration > 2 then
+        durationHint = " Игрок сказал пару фраз."
+    else
+        durationHint = " Игрок сказал что-то короткое."
+    end
+
     local messages = {
         { role = "system", content = CONTEXTUAL_SYSTEM_PROMPT },
-        { role = "user", content = context .. ". Ты слышишь голос игрока рядом." },
     }
 
-    MakeAPICall(messages, 100, 0.95, function(phrase)
-        if IsValid(npc) then
+    -- Add conversation history for continuity
+    local history = GetHistory(ply, npc)
+    for _, msg in ipairs(history) do
+        table.insert(messages, { role = msg.role, content = msg.content })
+    end
+
+    table.insert(messages, { role = "user", content = context .. durationHint .. " Игрок только что говорил с тобой. Ответь ему." })
+
+    MakeAPICall(messages, 120, 0.95, function(phrase)
+        if IsValid(npc) and IsValid(ply) then
+            AddToHistory(ply, npc, "user", "[игрок говорил голосом]")
+            AddToHistory(ply, npc, "assistant", phrase)
             BroadcastVoiceResponse(npc, phrase)
+            print("[Smart Maniac] Voice event response: " .. phrase)
         end
     end)
+end
+
+--- Handle contextual voice (legacy, kept for compatibility).
+function SmartManiac.VoiceConv.HandleContextualVoice(npc, ply)
+    if not IsValid(npc) or not IsValid(ply) then return end
+    SmartManiac.VoiceConv.HandleVoiceEvent(ply, 2.0)
 end
 
 --- Proactive speaking: maniac talks on his own near players.
@@ -442,6 +488,12 @@ timer.Create("SmartManiac_VoiceConvCleanup", 60, 0, function()
         local ent = Entity(idx)
         if not IsValid(ent) then
             responseCooldowns[idx] = nil
+        end
+    end
+    for idx, _ in pairs(voiceEventCooldowns) do
+        local ent = Entity(idx)
+        if not IsValid(ent) then
+            voiceEventCooldowns[idx] = nil
         end
     end
     for idx, _ in pairs(proactiveCooldowns) do
