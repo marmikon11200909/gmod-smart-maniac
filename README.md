@@ -24,12 +24,25 @@ AI-powered maniac NPC for Garry's Mod with **live voice AI conversation**, intel
 
 ## Installation
 
-1. Download or clone this repository
-2. Place the `gmod-smart-maniac` folder into your Garry's Mod addons directory:
-   ```
-   Steam/steamapps/common/GarrysMod/garrysmod/addons/
-   ```
-3. Restart Garry's Mod or run `lua_reloadents` in console
+### Method 1: Automatic (Python installer)
+1. Download ZIP: [Download](https://github.com/marmikon11200909/gmod-smart-maniac/archive/refs/heads/base.zip)
+2. Unzip the archive
+3. Open the `gmod-smart-maniac-init` folder
+4. Double-click `install.bat` (or right-click `install.py` → Open with Python)
+5. The installer will find GMod automatically and copy files
+
+**Requirements:** Python 3 must be installed. Download from [python.org](https://www.python.org/downloads/) — check "Add to PATH" during install!
+
+### Method 2: Manual (100% works, no Python needed)
+1. Download ZIP: [Download](https://github.com/marmikon11200909/gmod-smart-maniac/archive/refs/heads/base.zip)
+2. Unzip the archive
+3. Find your GMod addons folder:
+   - Open **Steam** → Right-click **Garry's Mod** → **Properties** → **Local Files** → **Browse**
+   - Open folder `garrysmod` → `addons`
+4. Copy the `gmod-smart-maniac-init` folder into `addons`
+5. **Rename** the copied folder from `gmod-smart-maniac-init` to `gmod-smart-maniac`
+6. Final path should look like: `GarrysMod/garrysmod/addons/gmod-smart-maniac/lua/...`
+7. Restart Garry's Mod
 
 ## Quick Start — Voice AI
 
