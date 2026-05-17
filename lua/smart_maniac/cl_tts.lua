@@ -21,6 +21,8 @@ local ttsReady = false
 local ttsSynthReady = false
 local activeTTSChannels = {}
 local speakingNPCs = {}
+local speechQueue = {}  -- Queue of {npc, phrase} to play sequentially
+local isProcessingQueue = false
 
 -- Voice settings for deep male voice
 local VOICE_PITCH = 0.35
@@ -305,7 +307,41 @@ local function TrySpeechSynthesis(npc, phrase)
     return true
 end
 
+--- Process the next item in the speech queue.
+local function ProcessSpeechQueue()
+    if isProcessingQueue then return end
+    if #speechQueue == 0 then return end
+
+    isProcessingQueue = true
+    local item = table.remove(speechQueue, 1)
+    local npc = item.npc
+    local phrase = item.phrase
+
+    if not IsValid(npc) then
+        isProcessingQueue = false
+        ProcessSpeechQueue()
+        return
+    end
+
+    -- Stop any existing speech on this NPC first
+    SmartManiac.TTS.StopNPC(npc)
+
+    print("[Smart Maniac] TTS Speaking: " .. string.sub(phrase, 1, 80))
+
+    -- Play the speech
+    SpeakGoogleTTS(npc, phrase)
+
+    -- Estimate TTS duration based on text length, then process next item
+    local chunks = SplitText(phrase)
+    local estimatedDuration = #chunks * GTTS_CHUNK_DELAY + 3
+    timer.Simple(estimatedDuration, function()
+        isProcessingQueue = false
+        ProcessSpeechQueue()
+    end)
+end
+
 --- Main speak function. Uses Google TTS only (zombie voice the user prefers).
+--- Queues speeches so only one plays at a time per NPC.
 function SmartManiac.TTS.Speak(npc, phrase)
     if not IsValid(npc) then return end
     if not phrase or phrase == "" then return end
@@ -319,10 +355,24 @@ function SmartManiac.TTS.Speak(npc, phrase)
         phrase = string.sub(phrase, 1, 500)
     end
 
-    print("[Smart Maniac] TTS Speaking: " .. string.sub(phrase, 1, 80))
+    -- If NPC is currently speaking, stop the old speech and play this one
+    if SmartManiac.TTS.IsSpeaking(npc) then
+        SmartManiac.TTS.StopNPC(npc)
+        -- Clear any queued speech for this NPC (new speech replaces old)
+        for i = #speechQueue, 1, -1 do
+            if speechQueue[i].npc == npc then
+                table.remove(speechQueue, i)
+            end
+        end
+    end
 
-    -- Google TTS only (zombie voice - deep and menacing)
-    SpeakGoogleTTS(npc, phrase)
+    -- Add to queue
+    table.insert(speechQueue, { npc = npc, phrase = phrase })
+
+    -- Process immediately if nothing is playing
+    if not isProcessingQueue then
+        ProcessSpeechQueue()
+    end
 end
 
 --- Stop all TTS playback for an NPC.

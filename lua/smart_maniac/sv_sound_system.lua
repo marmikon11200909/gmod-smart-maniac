@@ -160,11 +160,13 @@ end
 --- Broadcast a phrase to clients so it can be rendered above the NPC.
 -- @param npc Entity
 -- @param phrase string
-function SmartManiac.Sound.BroadcastPhrase(npc, phrase)
+-- @param speechType string  "proactive", "response", or "imitation" (default: "proactive")
+function SmartManiac.Sound.BroadcastPhrase(npc, phrase, speechType)
     if not IsValid(npc) then return end
 
     net.Start("SmartManiac_Phrase")
         net.WriteEntity(npc)
         net.WriteString(phrase)
+        net.WriteString(speechType or "proactive")
     net.Broadcast()
 end
