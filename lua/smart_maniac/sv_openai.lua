@@ -39,16 +39,13 @@ function SmartManiac.OpenAI.GeneratePhrase(context, callback)
         temperature = 0.9,
     })
 
-    HTTP({
-        url     = apiUrl,
-        method  = "POST",
-        headers = {
-            ["Content-Type"]  = "application/json",
-            ["Authorization"] = "Bearer " .. apiKey,
-        },
-        body    = body,
-        type    = "application/json",
-        success = function(code, responseBody)
+    local headers = {
+        ["Content-Type"]  = "application/json",
+        ["Authorization"] = "Bearer " .. apiKey,
+    }
+
+    SmartManiac.API.Request(apiUrl, "POST", headers, body,
+        function(code, responseBody)
             if code ~= 200 then
                 print("[Smart Maniac] OpenAI HTTP error code: " .. tostring(code))
                 print("[Smart Maniac] Response: " .. tostring(responseBody))
@@ -65,10 +62,10 @@ function SmartManiac.OpenAI.GeneratePhrase(context, callback)
                 if callback then callback(phrase) end
             end
         end,
-        failed = function(err)
+        function(err)
             print("[Smart Maniac] OpenAI request failed: " .. tostring(err))
-        end,
-    })
+        end
+    )
 end
 
 --- Ask the AI for a tactical decision.
@@ -100,16 +97,13 @@ function SmartManiac.OpenAI.DecideTactic(situation, options, callback)
         temperature = 0.3,
     })
 
-    HTTP({
-        url     = apiUrl,
-        method  = "POST",
-        headers = {
-            ["Content-Type"]  = "application/json",
-            ["Authorization"] = "Bearer " .. apiKey,
-        },
-        body    = body,
-        type    = "application/json",
-        success = function(code, responseBody)
+    local headers = {
+        ["Content-Type"]  = "application/json",
+        ["Authorization"] = "Bearer " .. apiKey,
+    }
+
+    SmartManiac.API.Request(apiUrl, "POST", headers, body,
+        function(code, responseBody)
             if code ~= 200 then
                 print("[Smart Maniac] OpenAI tactic HTTP error: " .. tostring(code))
                 return
@@ -121,9 +115,9 @@ function SmartManiac.OpenAI.DecideTactic(situation, options, callback)
                 if callback then callback(choice) end
             end
         end,
-        failed = function(err)
+        function(err)
             print("[Smart Maniac] OpenAI tactic request failed: " .. tostring(err))
             if callback then callback(options[1]) end
-        end,
-    })
+        end
+    )
 end

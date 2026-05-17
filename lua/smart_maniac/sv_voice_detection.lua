@@ -2,9 +2,11 @@
     Smart Maniac NPC - Voice Detection System (Server)
     Receives voice status updates from clients and notifies nearby maniac NPCs
     so they can investigate the sound source.
-
-    PlayerStartVoice / PlayerEndVoice are client-side hooks in GMod,
-    so clients send net messages to the server when voice state changes.
+    
+    IMPORTANT: This module only handles NPC behavior (investigation).
+    Voice RESPONSES are handled by sv_voice_conversation.lua via transcript.
+    DO NOT generate speech responses here — it causes cooldown conflicts
+    that block the transcript-based responses from firing.
 ]]
 
 SmartManiac = SmartManiac or {}
@@ -21,14 +23,16 @@ net.Receive("SmartManiac_VoiceStatus", function(len, ply)
 
     if isSpeaking then
         SmartManiac.Voice.SpeakingPlayers[ply] = true
+        print("[Smart Maniac] Player " .. ply:Nick() .. " started speaking")
     else
         SmartManiac.Voice.SpeakingPlayers[ply] = nil
+        print("[Smart Maniac] Player " .. ply:Nick() .. " stopped speaking")
     end
 end)
 
 --- Periodic check: for each speaking player, alert nearby maniac NPCs.
+--- Only handles NPC AI behavior (investigation), NOT voice responses.
 timer.Create("SmartManiac_VoiceCheck", 0.5, 0, function()
-    -- Collect speaking players
     local speakers = {}
     for ply, _ in pairs(SmartManiac.Voice.SpeakingPlayers) do
         if IsValid(ply) and ply:Alive() then
@@ -40,7 +44,6 @@ timer.Create("SmartManiac_VoiceCheck", 0.5, 0, function()
 
     if #speakers == 0 then return end
 
-    -- Find all smart maniac NPCs in the world
     local maniacs = ents.FindByClass("npc_smart_maniac")
     if #maniacs == 0 then return end
 
@@ -51,17 +54,10 @@ timer.Create("SmartManiac_VoiceCheck", 0.5, 0, function()
             for _, ply in ipairs(speakers) do
                 local dist = maniac:GetPos():Distance(ply:GetPos())
                 if dist <= voiceRange then
-                    -- The maniac "heard" this player's voice
+                    -- Make maniac investigate the sound (AI behavior only)
                     SmartManiac.AI.OnVoiceHeard(maniac, ply:GetPos())
 
-                    -- Generate contextual AI voice response
-                    if SmartManiac.VoiceConv and SmartManiac.VoiceConv.HandleContextualVoice then
-                        SmartManiac.VoiceConv.HandleContextualVoice(maniac, ply)
-                    elseif isfunction(maniac.SayPhrase) then
-                        maniac:SayPhrase("investigate")
-                    end
-
-                    -- Notify via network for client-side effects
+                    -- Notify clients for visual effects
                     net.Start("SmartManiac_VoiceDetected")
                         net.WriteEntity(maniac)
                         net.WriteEntity(ply)
