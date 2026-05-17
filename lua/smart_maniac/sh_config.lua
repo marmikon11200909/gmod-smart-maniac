@@ -42,7 +42,7 @@ SmartManiac.Config.ThinkInterval    = 0.15  -- AI think rate in seconds
 -- OpenAI Integration
 -- ============================================================
 SmartManiac.Config.OpenAIEnabled   = false  -- Set to true to enable OpenAI
-SmartManiac.Config.OpenAIModel     = "gpt-4o-mini"
+SmartManiac.Config.OpenAIModel     = "anthropic/claude-3-haiku"
 
 SmartManiac.Config.ProviderURLs = {
     openai     = "https://api.openai.com/v1/chat/completions",
