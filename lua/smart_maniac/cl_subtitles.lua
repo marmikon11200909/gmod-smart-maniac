@@ -179,18 +179,35 @@ end)
 net.Receive("SmartManiac_Phrase", function()
     local npc = net.ReadEntity()
     local phrase = net.ReadString()
+    local speechType = net.ReadString()
 
     if not phrase or phrase == "" then return end
+    if not speechType or speechType == "" then speechType = "proactive" end
+
+    -- Different subtitle label and color based on speech type
+    local speakerLabel = "Маньяк"
+    local speakerColor = Color(255, 60, 60)
+
+    if speechType == "response" then
+        speakerLabel = "Маньяк [ответ]"
+        speakerColor = Color(255, 120, 40)
+    elseif speechType == "imitation" then
+        speakerLabel = "Маньяк [передразнивает]"
+        speakerColor = Color(255, 180, 0)
+    end
 
     -- Show subtitle
-    SmartManiac.Subtitles.Add("\xd0\x9c\xd0\xb0\xd0\xbd\xd1\x8c\xd1\x8f\xd0\xba", phrase, Color(255, 60, 60), 6)
+    SmartManiac.Subtitles.Add(speakerLabel, phrase, speakerColor, 6)
 
     -- Trigger TTS voice playback
     if SmartManiac.TTS and SmartManiac.TTS.Speak and IsValid(npc) then
         SmartManiac.TTS.Speak(npc, phrase)
     end
 
-    print("[Smart Maniac] Received phrase: " .. string.sub(phrase, 1, 80))
+    -- Notify other systems (e.g. 3D phrase bubble in cl_init.lua)
+    hook.Run("SmartManiac_PhraseReceived", npc, phrase, speechType)
+
+    print("[Smart Maniac] Received phrase (" .. speechType .. "): " .. string.sub(phrase, 1, 80))
 end)
 
 print("[Smart Maniac] Subtitle system loaded.")

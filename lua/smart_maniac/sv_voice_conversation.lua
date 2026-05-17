@@ -89,6 +89,7 @@ local voiceEventCooldowns = {} -- Cooldown for voice-event responses (player spo
 local proactiveCooldowns = {}  -- Separate cooldown for proactive speech (does NOT block responses)
 local proactiveTimers = {}
 local speakingSuppression = {} -- NPCs suppressed from proactive speech while player talks
+local npcSpeakingUntil = {}   -- Global speaking lock: NPC is speaking/waiting for API response
 
 local function GetConvKey(ply, npc)
     if not IsValid(ply) or not IsValid(npc) then return nil end
@@ -165,13 +166,20 @@ local function CleanPhrase(phrase)
     return phrase
 end
 
-local function BroadcastVoiceResponse(npc, phrase)
+--- speechType: "response" (replying to player), "proactive" (talking on own), "imitation" (mocking player)
+local function BroadcastVoiceResponse(npc, phrase, speechType)
     phrase = CleanPhrase(phrase)
     if phrase == "" or not IsValid(npc) then return end
+    speechType = speechType or "proactive"
+
+    local npcIdx = npc:EntIndex()
+    -- Lock this NPC from speaking for ~6 seconds (TTS playback duration estimate)
+    npcSpeakingUntil[npcIdx] = CurTime() + 6
 
     net.Start("SmartManiac_Phrase")
         net.WriteEntity(npc)
         net.WriteString(phrase)
+        net.WriteString(speechType)
     net.Broadcast()
 
     -- Look at target player
@@ -290,10 +298,11 @@ function SmartManiac.VoiceConv.HandleVoiceTranscript(ply, transcript)
         table.insert(messages, { role = msg.role, content = msg.content })
     end
 
+    local responseType = useImitation and "imitation" or "response"
     MakeAPICall(messages, 150, 0.95, function(phrase)
         if IsValid(npc) then
             AddToHistory(ply, npc, "assistant", phrase)
-            BroadcastVoiceResponse(npc, phrase)
+            BroadcastVoiceResponse(npc, phrase, responseType)
         end
     end)
 end
@@ -313,6 +322,12 @@ function SmartManiac.VoiceConv.HandleVoiceEvent(ply, speakDuration)
 
     local npcIdx = npc:EntIndex()
 
+    -- Don't respond if NPC is already speaking or waiting for API response
+    if npcSpeakingUntil[npcIdx] and CurTime() < npcSpeakingUntil[npcIdx] then
+        print("[Smart Maniac] HandleVoiceEvent: NPC #" .. npcIdx .. " is currently speaking, skipping")
+        return
+    end
+
     -- Use voice event cooldown (separate from transcript and proactive cooldowns)
     if voiceEventCooldowns[npcIdx] and CurTime() < voiceEventCooldowns[npcIdx] then
         print("[Smart Maniac] HandleVoiceEvent: NPC #" .. npcIdx .. " on voice event cooldown")
@@ -325,6 +340,8 @@ function SmartManiac.VoiceConv.HandleVoiceEvent(ply, speakDuration)
     end
 
     voiceEventCooldowns[npcIdx] = CurTime() + RESPONSE_COOLDOWN
+    -- Lock NPC from ALL speech while we wait for API response + playback
+    npcSpeakingUntil[npcIdx] = CurTime() + 12
     -- Suppress proactive speech after responding
     speakingSuppression[npcIdx] = CurTime() + SPEAKING_SUPPRESS_TIME
 
@@ -356,7 +373,7 @@ function SmartManiac.VoiceConv.HandleVoiceEvent(ply, speakDuration)
         if IsValid(npc) and IsValid(ply) then
             AddToHistory(ply, npc, "user", "[игрок говорил голосом]")
             AddToHistory(ply, npc, "assistant", phrase)
-            BroadcastVoiceResponse(npc, phrase)
+            BroadcastVoiceResponse(npc, phrase, "response")
             print("[Smart Maniac] Voice event response: " .. phrase)
         end
     end)
@@ -377,6 +394,9 @@ function SmartManiac.VoiceConv.ProactiveSpeech(npc)
     if apiKey == "" then return end
 
     local npcIdx = npc:EntIndex()
+
+    -- Don't speak proactively if NPC is currently speaking or waiting for API response
+    if npcSpeakingUntil[npcIdx] and CurTime() < npcSpeakingUntil[npcIdx] then return end
 
     -- Don't speak proactively if suppressed (player recently spoke / NPC just responded)
     if speakingSuppression[npcIdx] and CurTime() < speakingSuppression[npcIdx] then return end
@@ -412,6 +432,8 @@ function SmartManiac.VoiceConv.ProactiveSpeech(npc)
     if not IsValid(nearestPly) then return end
 
     proactiveCooldowns[npcIdx] = CurTime() + PROACTIVE_COOLDOWN
+    -- Lock NPC from other speech while API call is in flight
+    npcSpeakingUntil[npcIdx] = CurTime() + 10
 
     local context = GetGameContext(npc, nearestPly)
     local messages = {
@@ -421,7 +443,7 @@ function SmartManiac.VoiceConv.ProactiveSpeech(npc)
 
     MakeAPICall(messages, 80, 1.0, function(phrase)
         if IsValid(npc) then
-            BroadcastVoiceResponse(npc, phrase)
+            BroadcastVoiceResponse(npc, phrase, "proactive")
         end
     end)
 end
@@ -506,6 +528,12 @@ timer.Create("SmartManiac_VoiceConvCleanup", 60, 0, function()
         local ent = Entity(idx)
         if not IsValid(ent) then
             speakingSuppression[idx] = nil
+        end
+    end
+    for idx, _ in pairs(npcSpeakingUntil) do
+        local ent = Entity(idx)
+        if not IsValid(ent) then
+            npcSpeakingUntil[idx] = nil
         end
     end
     for idx, _ in pairs(proactiveTimers) do

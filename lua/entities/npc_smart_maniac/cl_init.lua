@@ -11,22 +11,17 @@ include("shared.lua")
 
 local activeManiacPhrases = {}  -- { [entity] = { text, startTime, duration } }
 
-net.Receive("SmartManiac_Phrase", function()
-    local npc    = net.ReadEntity()
-    local phrase = net.ReadString()
-
+-- NOTE: SmartManiac_Phrase is handled by cl_subtitles.lua (TTS + bottom subtitles).
+-- This hook updates the 3D phrase bubble above the NPC's head.
+hook.Add("SmartManiac_PhraseReceived", "SmartManiac_3DPhrase", function(npc, phrase, speechType)
     if not IsValid(npc) then return end
 
     activeManiacPhrases[npc] = {
         text      = phrase,
         startTime = CurTime(),
         duration  = math.Clamp(#phrase * 0.08, 2, 6),
+        speechType = speechType or "proactive",
     }
-
-    -- Play TTS voice audio
-    if SmartManiac.TTS and SmartManiac.TTS.Speak then
-        SmartManiac.TTS.Speak(npc, phrase)
-    end
 end)
 
 -- ============================================================
